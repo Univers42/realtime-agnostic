@@ -1,0 +1,1797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SyncSpace — Realtime Collaborative Workspace</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════
+   DESIGN SYSTEM
+   ═══════════════════════════════════════════════════════════════════════ */
+:root {
+  --bg:          #0b0d11;
+  --bg-alt:      #10131a;
+  --surface:     #161a24;
+  --surface-2:   #1c2030;
+  --surface-3:   #242838;
+  --border:      #2a2f40;
+  --border-2:    #363c52;
+  --text:        #e2e5f0;
+  --text-2:      #a0a6be;
+  --text-3:      #6b7194;
+  --accent:      #6366f1;
+  --accent-2:    #818cf8;
+  --accent-bg:   rgba(99,102,241,0.12);
+  --green:       #22c55e;
+  --green-bg:    rgba(34,197,94,0.12);
+  --red:         #ef4444;
+  --red-bg:      rgba(239,68,68,0.12);
+  --orange:      #f97316;
+  --yellow:      #eab308;
+  --blue:        #3b82f6;
+  --purple:      #8b5cf6;
+  --pink:        #ec4899;
+  --mono:        'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+  --sans:        'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --radius:      8px;
+  --radius-lg:   12px;
+  --shadow:      0 2px 8px rgba(0,0,0,0.3);
+  --shadow-lg:   0 8px 32px rgba(0,0,0,0.4);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   HEADER
+   ═══════════════════════════════════════════════════════════════════════ */
+.header {
+  height: 52px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 12px;
+  flex-shrink: 0;
+  z-index: 100;
+}
+.logo {
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--accent-2);
+  letter-spacing: -0.5px;
+}
+.logo span { color: var(--text-3); font-weight: 400; }
+.header-sep { width: 1px; height: 24px; background: var(--border); }
+.board-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.header-spacer { flex: 1; }
+
+/* Connection status */
+.conn-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-3);
+  padding: 4px 10px;
+  border-radius: 20px;
+  background: var(--surface-2);
+}
+.conn-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+  transition: background 0.3s;
+}
+.conn-dot.connected { background: var(--green); }
+.conn-dot.connecting { background: var(--orange); animation: pulse 1s infinite; }
+@keyframes pulse { 50% { opacity: 0.4; } }
+
+/* Presence avatars */
+.presence-bar {
+  display: flex;
+  align-items: center;
+  gap: -4px;
+}
+.presence-avatar {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  border: 2px solid var(--surface);
+  margin-left: -6px;
+  cursor: default;
+  text-transform: uppercase;
+  position: relative;
+}
+.presence-avatar:first-child { margin-left: 0; }
+.presence-avatar .tooltip {
+  display: none;
+  position: absolute;
+  bottom: -28px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface-3);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.presence-avatar:hover .tooltip { display: block; }
+
+/* User selector */
+.user-select {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  outline: none;
+  cursor: pointer;
+}
+.user-select:focus { border-color: var(--accent); }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   LAYOUT
+   ═══════════════════════════════════════════════════════════════════════ */
+.app-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* Sidebar */
+.sidebar {
+  width: 220px;
+  background: var(--bg-alt);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+.sidebar-section {
+  padding: 12px;
+}
+.sidebar-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+  margin-bottom: 8px;
+}
+.sidebar-item {
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.15s;
+}
+.sidebar-item:hover { background: var(--surface); color: var(--text); }
+.sidebar-item.active { background: var(--accent-bg); color: var(--accent-2); }
+.sidebar-item .icon { font-size: 15px; width: 18px; text-align: center; }
+.sidebar-item .badge {
+  margin-left: auto;
+  font-size: 10px;
+  background: var(--accent);
+  color: #fff;
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   KANBAN BOARD
+   ═══════════════════════════════════════════════════════════════════════ */
+.board-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+.board-scroll {
+  flex: 1;
+  display: flex;
+  gap: 16px;
+  padding: 20px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  align-items: flex-start;
+}
+.list {
+  min-width: 280px;
+  max-width: 280px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 120px);
+  flex-shrink: 0;
+}
+.list-header {
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+}
+.list-header .count {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-3);
+  background: var(--surface-2);
+  padding: 1px 7px;
+  border-radius: 10px;
+}
+.list-cards {
+  padding: 8px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 40px;
+}
+.list-cards.drag-over {
+  background: var(--accent-bg);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+/* Cards */
+.card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  cursor: grab;
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+  position: relative;
+}
+.card:hover {
+  border-color: var(--border-2);
+  box-shadow: var(--shadow);
+  transform: translateY(-1px);
+}
+.card.dragging {
+  opacity: 0.5;
+  transform: rotate(3deg);
+}
+.card-label {
+  width: 32px;
+  height: 4px;
+  border-radius: 2px;
+  margin-bottom: 8px;
+}
+.card-title {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+.card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.card-assignee {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-transform: uppercase;
+}
+.card-id {
+  font-size: 10px;
+  color: var(--text-3);
+  font-family: var(--mono);
+}
+.card-new-flash {
+  animation: cardFlash 0.8s ease-out;
+}
+@keyframes cardFlash {
+  0% { border-color: var(--green); box-shadow: 0 0 12px rgba(34,197,94,0.3); }
+  100% { border-color: var(--border); box-shadow: none; }
+}
+
+/* Add card */
+.add-card-btn {
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text-3);
+  cursor: pointer;
+  border-radius: var(--radius);
+  transition: background 0.15s, color 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 8px 8px;
+}
+.add-card-btn:hover { background: var(--surface-2); color: var(--text); }
+
+/* Add card inline form */
+.add-card-form {
+  padding: 0 8px 8px;
+  display: none;
+}
+.add-card-form.visible { display: block; }
+.add-card-input {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+  outline: none;
+  resize: none;
+}
+.add-card-input:focus { border-color: var(--accent); }
+.add-card-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ADD LIST
+   ═══════════════════════════════════════════════════════════════════════ */
+.add-list-btn {
+  min-width: 280px;
+  padding: 12px;
+  background: rgba(99,102,241,0.08);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+  color: var(--text-3);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.add-list-btn:hover { background: var(--accent-bg); color: var(--accent-2); }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   LIVE CURSORS
+   ═══════════════════════════════════════════════════════════════════════ */
+.cursor-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  z-index: 50;
+  overflow: hidden;
+}
+.remote-cursor {
+  position: absolute;
+  pointer-events: none;
+  will-change: transform;
+  transition: none; /* we'll animate via rAF */
+}
+.remote-cursor svg {
+  width: 16px;
+  height: 20px;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));
+}
+.remote-cursor .cursor-label {
+  position: absolute;
+  left: 16px;
+  top: 14px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   CHAT PANEL
+   ═══════════════════════════════════════════════════════════════════════ */
+.chat-panel {
+  width: 320px;
+  background: var(--bg-alt);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+.chat-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.chat-header-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+.chat-header-icon { color: var(--text-3); }
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.chat-msg {
+  display: flex;
+  gap: 10px;
+}
+.chat-msg-avatar {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+.chat-msg-body { flex: 1; min-width: 0; }
+.chat-msg-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.chat-msg-name { font-size: 13px; font-weight: 600; }
+.chat-msg-time { font-size: 10px; color: var(--text-3); }
+.chat-msg-text {
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.5;
+  word-break: break-word;
+}
+.chat-msg.new-flash .chat-msg-text {
+  animation: msgFlash 0.6s ease-out;
+}
+@keyframes msgFlash {
+  0% { color: var(--green); }
+  100% { color: var(--text-2); }
+}
+.typing-indicator {
+  padding: 4px 16px;
+  font-size: 11px;
+  color: var(--text-3);
+  font-style: italic;
+  min-height: 20px;
+}
+.chat-input-area {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+}
+.chat-input {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+  outline: none;
+}
+.chat-input:focus { border-color: var(--accent); }
+.chat-input::placeholder { color: var(--text-3); }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   DEBUG PANEL
+   ═══════════════════════════════════════════════════════════════════════ */
+.debug-toggle {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-lg);
+  z-index: 200;
+  transition: transform 0.2s;
+}
+.debug-toggle:hover { transform: scale(1.1); }
+
+.debug-panel {
+  position: fixed;
+  bottom: 64px;
+  right: 16px;
+  width: 440px;
+  max-height: 480px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  display: none;
+  flex-direction: column;
+  z-index: 200;
+  box-shadow: var(--shadow-lg);
+}
+.debug-panel.open { display: flex; }
+.debug-header {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.debug-header h3 {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent-2);
+  flex: 1;
+}
+.adapter-btn {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: transparent;
+  color: var(--text-3);
+}
+.adapter-btn.active-pg {
+  background: rgba(59,130,246,0.15);
+  border-color: var(--blue);
+  color: var(--blue);
+}
+.adapter-btn.active-mongo {
+  background: var(--green-bg);
+  border-color: var(--green);
+  color: var(--green);
+}
+.debug-stats {
+  padding: 8px 14px;
+  display: flex;
+  gap: 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+}
+.debug-stat { display: flex; flex-direction: column; gap: 2px; }
+.debug-stat-val { font-weight: 700; font-family: var(--mono); color: var(--text); }
+.debug-stat-label { color: var(--text-3); }
+.debug-events {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+.debug-event {
+  padding: 6px 8px;
+  font-size: 11px;
+  font-family: var(--mono);
+  border-radius: 4px;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-2);
+}
+.debug-event:hover { background: var(--surface-2); }
+.debug-badge {
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+.debug-badge.pg { background: rgba(59,130,246,0.15); color: var(--blue); }
+.debug-badge.mongo { background: var(--green-bg); color: var(--green); }
+.debug-badge.ws { background: rgba(139,92,246,0.15); color: var(--purple); }
+.debug-badge.bus { background: rgba(249,115,22,0.15); color: var(--orange); }
+.debug-event-type { color: var(--text); font-weight: 600; flex-shrink: 0; }
+.debug-event-detail { color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.debug-event-time { margin-left: auto; color: var(--text-3); flex-shrink: 0; }
+.debug-clear {
+  background: none;
+  border: none;
+  color: var(--text-3);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+.debug-clear:hover { color: var(--red); }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   BUTTONS
+   ═══════════════════════════════════════════════════════════════════════ */
+.btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--sans);
+  transition: opacity 0.15s;
+}
+.btn:hover { opacity: 0.85; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-ghost { background: transparent; color: var(--text-3); }
+.btn-sm { padding: 4px 10px; font-size: 11px; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   LOGIN SCREEN
+   ═══════════════════════════════════════════════════════════════════════ */
+.login-screen {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.login-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 40px;
+  width: 360px;
+  text-align: center;
+}
+.login-card h1 {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--accent-2);
+  margin-bottom: 4px;
+}
+.login-card p {
+  font-size: 13px;
+  color: var(--text-3);
+  margin-bottom: 24px;
+}
+.login-users {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.login-user-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  text-align: left;
+}
+.login-user-btn:hover {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+.login-user-btn .avatar {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  color: #fff;
+  text-transform: uppercase;
+}
+.login-user-btn .info { flex: 1; }
+.login-user-btn .name { font-weight: 600; }
+.login-user-btn .email { font-size: 11px; color: var(--text-3); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-2); }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     LOGIN SCREEN
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div id="login-screen" class="login-screen">
+  <div class="login-card">
+    <h1>SyncSpace</h1>
+    <p>Realtime Collaborative Workspace</p>
+    <div class="login-users" id="login-users"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     MAIN APP
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div id="app" style="display:none; flex-direction:column; height:100%;">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo">SyncSpace <span>realtime</span></div>
+    <div class="header-sep"></div>
+    <div class="board-title" id="board-title">Product Roadmap</div>
+    <div class="header-spacer"></div>
+    <div class="presence-bar" id="presence-bar"></div>
+    <div class="conn-status">
+      <div class="conn-dot" id="conn-dot"></div>
+      <span id="conn-text">Disconnected</span>
+    </div>
+    <select class="user-select" id="user-switch" title="Switch user (simulates multi-user)"></select>
+  </div>
+
+  <!-- Body -->
+  <div class="app-body">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-label">Board</div>
+        <div class="sidebar-item active">
+          <span class="icon">📋</span> Product Roadmap
+        </div>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-label">Channels</div>
+        <div class="sidebar-item" id="ch-general-btn" onclick="switchChannel('ch-general')">
+          <span class="icon">#</span> general
+        </div>
+        <div class="sidebar-item" id="ch-random-btn" onclick="switchChannel('ch-random')">
+          <span class="icon">#</span> random
+        </div>
+      </div>
+      <div class="sidebar-section" style="margin-top:auto;">
+        <div class="sidebar-label">Adapter</div>
+        <div class="sidebar-item" id="adapter-pg-btn" onclick="switchAdapter('postgres')" style="font-size:12px;">
+          <span class="icon">🐘</span> PostgreSQL
+          <span class="badge" id="pg-badge" style="display:none;">active</span>
+        </div>
+        <div class="sidebar-item" id="adapter-mongo-btn" onclick="switchAdapter('mongo')" style="font-size:12px;">
+          <span class="icon">🍃</span> MongoDB
+          <span class="badge" id="mongo-badge" style="display:none;">active</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Board -->
+    <div class="board-area" id="board-area">
+      <div class="cursor-overlay" id="cursor-overlay"></div>
+      <div class="board-scroll" id="board-scroll"></div>
+    </div>
+
+    <!-- Chat -->
+    <div class="chat-panel">
+      <div class="chat-header">
+        <span class="chat-header-icon">#</span>
+        <span class="chat-header-title" id="chat-channel-name">general</span>
+      </div>
+      <div class="chat-messages" id="chat-messages"></div>
+      <div class="typing-indicator" id="typing-indicator"></div>
+      <div class="chat-input-area">
+        <input type="text" class="chat-input" id="chat-input"
+               placeholder="Type a message..." autocomplete="off">
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Debug panel toggle -->
+<button class="debug-toggle" id="debug-toggle" title="Debug Panel">🔍</button>
+
+<!-- Debug panel -->
+<div class="debug-panel" id="debug-panel">
+  <div class="debug-header">
+    <h3>Realtime Debug</h3>
+    <button class="adapter-btn" id="dbg-pg-btn" onclick="switchAdapter('postgres')">PostgreSQL</button>
+    <button class="adapter-btn" id="dbg-mongo-btn" onclick="switchAdapter('mongo')">MongoDB</button>
+    <button class="debug-clear" onclick="clearDebugEvents()">Clear</button>
+  </div>
+  <div class="debug-stats">
+    <div class="debug-stat">
+      <span class="debug-stat-val" id="stat-events">0</span>
+      <span class="debug-stat-label">Events</span>
+    </div>
+    <div class="debug-stat">
+      <span class="debug-stat-val" id="stat-latency">—</span>
+      <span class="debug-stat-label">Avg Latency</span>
+    </div>
+    <div class="debug-stat">
+      <span class="debug-stat-val" id="stat-adapter">PG</span>
+      <span class="debug-stat-label">Adapter</span>
+    </div>
+    <div class="debug-stat">
+      <span class="debug-stat-val" id="stat-conns">0</span>
+      <span class="debug-stat-label">Subs</span>
+    </div>
+  </div>
+  <div class="debug-events" id="debug-events"></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     JAVASCRIPT
+     ═══════════════════════════════════════════════════════════════════════ -->
+<script>
+// ─── State ──────────────────────────────────────────────────────────────
+const USERS = [
+  { id: 'user-alice', username: 'alice', email: 'alice@syncspace.dev', color: '#ef4444' },
+  { id: 'user-bob',   username: 'bob',   email: 'bob@syncspace.dev',   color: '#3b82f6' },
+  { id: 'user-carol', username: 'carol', email: 'carol@syncspace.dev', color: '#22c55e' },
+];
+
+let currentUser = null;
+let currentAdapter = 'postgres';
+let currentChannel = 'ch-general';
+let ws = null;
+let reconnectTimer = null;
+let authenticated = false;
+
+// Board state
+let board = {
+  id: 'board-roadmap',
+  name: 'Product Roadmap',
+  lists: [],
+  cards: {},
+};
+let chatMessages = {};     // channelId -> [msg]
+let typingUsers = {};       // channelId -> { userId: timeout }
+let sentMessageIds = new Set();  // IDs of messages we sent locally (suppress self-echo)
+let onlineUsers = new Set();
+let remoteCursors = {};     // userId -> { x, y }
+let subscriptions = [];
+
+// Debug
+let debugEvents = [];
+let debugEventCount = 0;
+let latencies = [];
+
+// ─── Helpers ────────────────────────────────────────────────────────────
+function $(id) { return document.getElementById(id); }
+function qs(sel) { return document.querySelector(sel); }
+function genId() { return 'id-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+function timeAgo(date) {
+  const s = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.floor(s/60) + 'm ago';
+  if (s < 86400) return Math.floor(s/3600) + 'h ago';
+  return Math.floor(s/86400) + 'd ago';
+}
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// ─── Login ──────────────────────────────────────────────────────────────
+function renderLogin() {
+  const container = $('login-users');
+  container.innerHTML = USERS.map(u => `
+    <button class="login-user-btn" onclick="loginAs('${u.id}')">
+      <div class="avatar" style="background:${u.color}">${u.username[0]}</div>
+      <div class="info">
+        <div class="name">${u.username}</div>
+        <div class="email">${u.email}</div>
+      </div>
+    </button>
+  `).join('');
+}
+
+function loginAs(userId) {
+  currentUser = USERS.find(u => u.id === userId);
+  if (!currentUser) return;
+
+  $('login-screen').style.display = 'none';
+  $('app').style.display = 'flex';
+
+  // Populate user switcher
+  const sel = $('user-switch');
+  sel.innerHTML = USERS.map(u =>
+    `<option value="${u.id}" ${u.id === userId ? 'selected' : ''}>${u.username}</option>`
+  ).join('');
+  sel.onchange = (e) => loginAs(e.target.value);
+
+  connectWebSocket();
+  fetchBoardData();
+  fetchChatMessages(currentChannel);
+  updateAdapterUI();
+}
+
+// ─── WebSocket ──────────────────────────────────────────────────────────
+function connectWebSocket() {
+  if (ws) { ws.close(); ws = null; }
+  authenticated = false;
+
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const url = `${proto}//${location.host}/ws`;
+
+  updateConnStatus('connecting');
+  ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    updateConnStatus('connecting');
+    // Authenticate
+    ws.send(JSON.stringify({ type: 'AUTH', token: currentUser.id }));
+  };
+
+  ws.onmessage = (evt) => {
+    const msg = JSON.parse(evt.data);
+    handleServerMessage(msg);
+  };
+
+  ws.onclose = () => {
+    updateConnStatus('disconnected');
+    authenticated = false;
+    if (!reconnectTimer) {
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        if (currentUser) connectWebSocket();
+      }, 2000);
+    }
+  };
+
+  ws.onerror = () => {
+    ws.close();
+  };
+}
+
+function wsSend(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(obj));
+  }
+}
+
+function updateConnStatus(state) {
+  const dot = $('conn-dot');
+  const text = $('conn-text');
+  dot.className = 'conn-dot ' + (state === 'connected' ? 'connected' : state === 'connecting' ? 'connecting' : '');
+  text.textContent = state === 'connected' ? 'Connected' : state === 'connecting' ? 'Connecting...' : 'Disconnected';
+}
+
+function handleServerMessage(msg) {
+  const recvTime = Date.now();
+
+  switch (msg.type) {
+    case 'AUTH_OK':
+      authenticated = true;
+      updateConnStatus('connected');
+      subscribeToChannels();
+      break;
+
+    case 'SUBSCRIBED':
+      addDebugEvent('ws', 'subscribed', msg.sub_id || '');
+      break;
+
+    case 'EVENT':
+      handleRealtimeEvent(msg.event, recvTime);
+      break;
+
+    case 'PONG':
+      break;
+
+    case 'ERROR':
+      console.error('Server error:', msg.message);
+      addDebugEvent('ws', 'error', msg.message);
+      break;
+
+    default:
+      // Auth OK fallback — NoAuth sends raw conn_id sometimes
+      if (!authenticated) {
+        authenticated = true;
+        updateConnStatus('connected');
+        subscribeToChannels();
+      }
+  }
+}
+
+function subscribeToChannels() {
+  subscriptions = [
+    { sub_id: 'board-' + board.id, topic: 'board:' + board.id + '/*' },
+    { sub_id: 'board-cursors',     topic: 'board:' + board.id + ':cursors/*' },
+    { sub_id: 'chat-general',      topic: 'channel:ch-general:chat/*' },
+    { sub_id: 'chat-random',       topic: 'channel:ch-random:chat/*' },
+    { sub_id: 'presence',          topic: 'presence/*' },
+    // Also subscribe to PG CDC and Mongo change events
+    { sub_id: 'pg-cdc',            topic: 'pg/**' },
+    { sub_id: 'mongo-cs',          topic: 'mongo/**' },
+  ];
+
+  wsSend({
+    type: 'SUBSCRIBE_BATCH',
+    subscriptions: subscriptions,
+  });
+
+  $('stat-conns').textContent = subscriptions.length;
+
+  // Announce presence via WS PUBLISH
+  wsSend({ type: 'PUBLISH', topic: 'presence/join', event_type: 'user.joined_board', payload: {
+    userId: currentUser.id,
+    username: currentUser.username,
+    color: currentUser.color,
+    boardId: board.id,
+  }});
+
+  onlineUsers.add(currentUser.id);
+  renderPresence();
+}
+
+// ─── Event Handling ─────────────────────────────────────────────────────
+function handleRealtimeEvent(event, recvTime) {
+  if (!event) return;
+  const topic = event.topic || '';
+  const eventType = event.event_type || '';
+  let payload = {};
+
+  // Parse payload
+  if (event.payload) {
+    if (typeof event.payload === 'string') {
+      try { payload = JSON.parse(event.payload); } catch(e) { payload = {}; }
+    } else if (event.payload.data) {
+      // Binary payload from Rust server
+      try {
+        const dec = typeof event.payload.data === 'string'
+          ? event.payload.data
+          : new TextDecoder().decode(new Uint8Array(event.payload.data || event.payload));
+        payload = JSON.parse(dec);
+      } catch(e) { payload = event.payload; }
+    } else {
+      payload = event.payload;
+    }
+  }
+
+  // Track latency
+  if (event.timestamp) {
+    const lat = recvTime - (event.timestamp / 1000000); // timestamps might be in ns or ms
+    if (lat > 0 && lat < 10000) {
+      latencies.push(lat);
+      if (latencies.length > 50) latencies.shift();
+      const avg = Math.round(latencies.reduce((a,b) => a+b, 0) / latencies.length);
+      $('stat-latency').textContent = avg + 'ms';
+    }
+  }
+
+  // Determine source badge
+  let source = 'bus';
+  if (topic.startsWith('pg/') || (payload.table && !topic.startsWith('mongo'))) source = 'pg';
+  else if (topic.startsWith('mongo/') || payload._id) source = 'mongo';
+
+  addDebugEvent(source, eventType || topic.split('/').pop(), truncate(JSON.stringify(payload), 80));
+
+  // Route event to handlers
+  if (topic.includes('cards') || eventType.includes('card') || (payload.table === 'cards')) {
+    handleCardEvent(eventType, payload);
+  }
+  if (topic.includes('lists') || eventType.includes('list') || (payload.table === 'lists')) {
+    handleListEvent(eventType, payload);
+  }
+  if (topic.includes('cursor') || eventType === 'cursor.moved') {
+    handleCursorEvent(payload);
+  }
+  // Chat messages only — exclude typing topics to avoid empty ghost messages
+  if (topic.includes('chat/message') || eventType === 'message.created') {
+    handleChatEvent(eventType, payload);
+  }
+  if (topic.includes('presence') || eventType.includes('user.joined') || eventType.includes('user.left')) {
+    handlePresenceEvent(eventType, payload);
+  }
+  if (topic.includes('typing') || eventType === 'user.typing' || eventType === 'user.stopped_typing') {
+    handleTypingEvent(payload);
+  }
+}
+
+function truncate(s, n) { return s.length > n ? s.slice(0, n) + '…' : s; }
+
+// ─── Card Events ────────────────────────────────────────────────────────
+function handleCardEvent(eventType, payload) {
+  const data = payload.data || payload;
+  const op = payload.operation || eventType;
+
+  if (op === 'INSERT' || op === 'card.created') {
+    if (data.id && !board.cards[data.id]) {
+      board.cards[data.id] = {
+        id: data.id,
+        list_id: data.list_id,
+        title: data.title || 'New Card',
+        description: data.description || '',
+        position: data.position || 0,
+        assignee_id: data.assignee_id,
+        label_color: data.label_color,
+        created_by: data.created_by,
+      };
+      renderBoard();
+      flashCard(data.id);
+    }
+  } else if (op === 'UPDATE' || op === 'card.updated' || op === 'card.moved') {
+    if (data.id && board.cards[data.id]) {
+      Object.assign(board.cards[data.id], data);
+      renderBoard();
+      flashCard(data.id);
+    }
+  } else if (op === 'DELETE' || op === 'card.deleted') {
+    if (data.id) {
+      delete board.cards[data.id];
+      renderBoard();
+    }
+  }
+}
+
+function handleListEvent(eventType, payload) {
+  const data = payload.data || payload;
+  const op = payload.operation || eventType;
+
+  if (op === 'INSERT' || op === 'list.created') {
+    if (data.id && !board.lists.find(l => l.id === data.id)) {
+      board.lists.push({
+        id: data.id,
+        title: data.title || 'New List',
+        position: data.position || board.lists.length,
+      });
+      board.lists.sort((a, b) => a.position - b.position);
+      renderBoard();
+    }
+  } else if (op === 'DELETE' || op === 'list.deleted') {
+    board.lists = board.lists.filter(l => l.id !== data.id);
+    renderBoard();
+  }
+}
+
+function handleCursorEvent(payload) {
+  if (payload.userId === currentUser.id) return;
+  const uid = payload.userId;
+
+  if (!remoteCursors[uid]) {
+    // Create new cursor state with target position
+    remoteCursors[uid] = {
+      x: payload.x, y: payload.y,       // current interpolated position
+      tx: payload.x, ty: payload.y,     // target position
+      color: payload.color || '#888',
+      username: payload.username || uid,
+      el: null,                          // DOM element (created lazily in rAF loop)
+    };
+  } else {
+    // Update target — rAF loop will lerp towards it
+    remoteCursors[uid].tx = payload.x;
+    remoteCursors[uid].ty = payload.y;
+    remoteCursors[uid].color = payload.color || remoteCursors[uid].color;
+    remoteCursors[uid].username = payload.username || remoteCursors[uid].username;
+  }
+
+  // Reset auto-remove timer
+  clearTimeout(remoteCursors[uid]._timeout);
+  remoteCursors[uid]._timeout = setTimeout(() => {
+    if (remoteCursors[uid] && remoteCursors[uid].el) {
+      remoteCursors[uid].el.remove();
+    }
+    delete remoteCursors[uid];
+  }, 3000);
+}
+
+function handleChatEvent(eventType, payload) {
+  const data = payload.data || payload;
+  if (!data.channelId && !data.channel_id) return;
+  // Skip events that have no actual message content (e.g. typing leaks)
+  const content = data.content || data.text || '';
+  if (!content.trim()) return;
+  const chId = data.channelId || data.channel_id || currentChannel;
+  const msgId = data.id || data._id;
+
+  // Suppress self-echo: if we already added this message locally, skip
+  if (msgId && sentMessageIds.has(msgId)) {
+    sentMessageIds.delete(msgId); // clean up
+    return;
+  }
+
+  if (!chatMessages[chId]) chatMessages[chId] = [];
+
+  // Avoid duplicates (same id from CDC / bus echo)
+  if (msgId && chatMessages[chId].find(m => m.id === msgId)) return;
+
+  chatMessages[chId].push({
+    id: msgId || genId(),
+    userId: data.userId || data.user_id || data.actor_id,
+    username: data.username || data.sender || 'unknown',
+    content: data.content || data.text || '',
+    createdAt: data.createdAt || data.created_at || new Date().toISOString(),
+    isNew: true,
+  });
+
+  if (chId === currentChannel) renderChat();
+}
+
+function handlePresenceEvent(eventType, payload) {
+  if (eventType.includes('joined') || eventType.includes('join')) {
+    onlineUsers.add(payload.userId || payload.user_id);
+  } else if (eventType.includes('left') || eventType.includes('leave')) {
+    onlineUsers.delete(payload.userId || payload.user_id);
+  }
+  renderPresence();
+}
+
+function handleTypingEvent(payload) {
+  const userId = payload.userId || payload.user_id;
+  if (userId === currentUser.id) return;
+  const chId = payload.channelId || payload.channel_id || currentChannel;
+
+  if (!typingUsers[chId]) typingUsers[chId] = {};
+  clearTimeout(typingUsers[chId][userId]);
+  typingUsers[chId][userId] = setTimeout(() => {
+    delete typingUsers[chId][userId];
+    renderTypingIndicator();
+  }, 4000);
+  renderTypingIndicator();
+}
+
+// ─── Publish ────────────────────────────────────────────────────────────
+async function publishEvent(topic, eventType, payload) {
+  try {
+    await fetch('/v1/publish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topic, event_type: eventType, payload }),
+    });
+  } catch (e) {
+    console.error('Publish failed:', e);
+  }
+}
+
+// ─── Fetch Data ─────────────────────────────────────────────────────────
+async function fetchBoardData() {
+  // We use the REST API → but our Rust server doesn't have CRUD endpoints
+  // So we load seed data directly (in a real app this would be an API call)
+  board.lists = [
+    { id: 'list-backlog', title: 'Backlog', position: 0 },
+    { id: 'list-in-progress', title: 'In Progress', position: 1 },
+    { id: 'list-review', title: 'In Review', position: 2 },
+    { id: 'list-done', title: 'Done', position: 3 },
+  ];
+
+  board.cards = {
+    'card-1': { id: 'card-1', list_id: 'list-backlog', title: 'WebSocket reconnect with replay', position: 0, assignee_id: 'user-alice', label_color: '#ef4444', created_by: 'user-alice' },
+    'card-2': { id: 'card-2', list_id: 'list-backlog', title: 'Add MySQL adapter', position: 1, assignee_id: null, label_color: '#f97316', created_by: 'user-bob' },
+    'card-3': { id: 'card-3', list_id: 'list-backlog', title: 'Rate limiting per subscription', position: 2, assignee_id: 'user-carol', label_color: '#eab308', created_by: 'user-carol' },
+    'card-4': { id: 'card-4', list_id: 'list-in-progress', title: 'Live cursor overlays', position: 0, assignee_id: 'user-bob', label_color: '#3b82f6', created_by: 'user-alice' },
+    'card-5': { id: 'card-5', list_id: 'list-in-progress', title: 'Chat message reactions', position: 1, assignee_id: 'user-carol', label_color: '#8b5cf6', created_by: 'user-bob' },
+    'card-6': { id: 'card-6', list_id: 'list-review', title: 'Presence indicators', position: 0, assignee_id: 'user-alice', label_color: '#22c55e', created_by: 'user-carol' },
+    'card-7': { id: 'card-7', list_id: 'list-done', title: 'PostgreSQL CDC integration', position: 0, assignee_id: 'user-alice', label_color: '#22c55e', created_by: 'user-alice' },
+    'card-8': { id: 'card-8', list_id: 'list-done', title: 'MongoDB change streams', position: 1, assignee_id: 'user-bob', label_color: '#22c55e', created_by: 'user-bob' },
+  };
+
+  renderBoard();
+}
+
+async function fetchChatMessages(channelId) {
+  // Load seed messages (in real app, fetch from API)
+  if (!chatMessages[channelId]) chatMessages[channelId] = [];
+
+  const seedMsgs = {
+    'ch-general': [
+      { id: 'msg-1', userId: 'user-alice', username: 'alice', content: 'Hey team! The realtime engine is looking great. Anyone tested the MongoDB adapter yet?', createdAt: new Date(Date.now() - 3600000).toISOString() },
+      { id: 'msg-2', userId: 'user-bob', username: 'bob', content: 'Yes! Change streams are working perfectly. Events come through in <50ms.', createdAt: new Date(Date.now() - 3500000).toISOString() },
+      { id: 'msg-3', userId: 'user-carol', username: 'carol', content: 'The debug panel is super useful for comparing adapters. Can confirm both PG and Mongo produce identical behavior.', createdAt: new Date(Date.now() - 3400000).toISOString() },
+    ],
+    'ch-random': [
+      { id: 'msg-4', userId: 'user-bob', username: 'bob', content: 'Who else thinks we should add a SQLite adapter for local dev?', createdAt: new Date(Date.now() - 1800000).toISOString() },
+      { id: 'msg-5', userId: 'user-alice', username: 'alice', content: 'Absolutely. Zero-config local dev would be a huge DX win.', createdAt: new Date(Date.now() - 1700000).toISOString() },
+    ]
+  };
+
+  if (seedMsgs[channelId] && chatMessages[channelId].length === 0) {
+    chatMessages[channelId] = seedMsgs[channelId];
+  }
+
+  renderChat();
+}
+
+// ─── Render: Board ──────────────────────────────────────────────────────
+function renderBoard() {
+  const scroll = $('board-scroll');
+  const sortedLists = [...board.lists].sort((a, b) => a.position - b.position);
+
+  scroll.innerHTML = sortedLists.map(list => {
+    const cards = Object.values(board.cards)
+      .filter(c => c.list_id === list.id)
+      .sort((a, b) => (a.position || 0) - (b.position || 0));
+
+    return `
+      <div class="list" data-list-id="${list.id}">
+        <div class="list-header">
+          ${escHtml(list.title)}
+          <span class="count">${cards.length}</span>
+        </div>
+        <div class="list-cards" data-list-id="${list.id}"
+             ondragover="onDragOver(event)" ondrop="onDrop(event, '${list.id}')"
+             ondragleave="onDragLeave(event)">
+          ${cards.map(card => renderCard(card)).join('')}
+        </div>
+        <div class="add-card-form" id="add-form-${list.id}">
+          <textarea class="add-card-input" id="add-input-${list.id}"
+                    placeholder="Enter card title..." rows="2"
+                    onkeydown="onAddCardKey(event, '${list.id}')"></textarea>
+          <div class="add-card-actions">
+            <button class="btn btn-primary btn-sm" onclick="addCard('${list.id}')">Add Card</button>
+            <button class="btn btn-ghost btn-sm" onclick="hideAddForm('${list.id}')">Cancel</button>
+          </div>
+        </div>
+        <div class="add-card-btn" onclick="showAddForm('${list.id}')">+ Add a card</div>
+      </div>
+    `;
+  }).join('') + `
+    <div class="add-list-btn" onclick="addList()">+ Add another list</div>
+  `;
+}
+
+function renderCard(card) {
+  const user = USERS.find(u => u.id === card.assignee_id);
+  return `
+    <div class="card" id="card-${card.id}" draggable="true"
+         ondragstart="onDragStart(event, '${card.id}')"
+         ondragend="onDragEnd(event)">
+      ${card.label_color ? `<div class="card-label" style="background:${card.label_color}"></div>` : ''}
+      <div class="card-title">${escHtml(card.title)}</div>
+      <div class="card-meta">
+        ${user ? `<div class="card-assignee" style="background:${user.color}" title="${user.username}">${user.username[0]}</div>` : ''}
+        <span class="card-id">${card.id}</span>
+      </div>
+    </div>
+  `;
+}
+
+function flashCard(cardId) {
+  setTimeout(() => {
+    const el = document.getElementById('card-' + cardId);
+    if (el) {
+      el.classList.add('card-new-flash');
+      setTimeout(() => el.classList.remove('card-new-flash'), 800);
+    }
+  }, 50);
+}
+
+// ─── Drag & Drop ────────────────────────────────────────────────────────
+let dragCardId = null;
+
+function onDragStart(e, cardId) {
+  dragCardId = cardId;
+  e.dataTransfer.effectAllowed = 'move';
+  e.target.classList.add('dragging');
+}
+
+function onDragEnd(e) {
+  e.target.classList.remove('dragging');
+  dragCardId = null;
+  document.querySelectorAll('.list-cards').forEach(el => el.classList.remove('drag-over'));
+}
+
+function onDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  e.currentTarget.classList.add('drag-over');
+}
+
+function onDragLeave(e) {
+  e.currentTarget.classList.remove('drag-over');
+}
+
+function onDrop(e, listId) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  if (!dragCardId) return;
+
+  const card = board.cards[dragCardId];
+  if (!card) return;
+
+  const oldListId = card.list_id;
+  card.list_id = listId;
+
+  // Reorder
+  const cardsInList = Object.values(board.cards).filter(c => c.list_id === listId);
+  card.position = cardsInList.length;
+
+  renderBoard();
+
+  // Publish card.moved event
+  publishEvent('board:' + board.id + '/card.moved', 'card.moved', {
+    id: card.id,
+    list_id: listId,
+    old_list_id: oldListId,
+    position: card.position,
+    board_id: board.id,
+    actor: currentUser.id,
+  });
+}
+
+// ─── Add Card ───────────────────────────────────────────────────────────
+function showAddForm(listId) {
+  const form = $('add-form-' + listId);
+  form.classList.add('visible');
+  $('add-input-' + listId).focus();
+}
+
+function hideAddForm(listId) {
+  $('add-form-' + listId).classList.remove('visible');
+  $('add-input-' + listId).value = '';
+}
+
+function onAddCardKey(e, listId) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    addCard(listId);
+  }
+  if (e.key === 'Escape') hideAddForm(listId);
+}
+
+function addCard(listId) {
+  const input = $('add-input-' + listId);
+  const title = input.value.trim();
+  if (!title) return;
+
+  const cardId = genId();
+  const cardsInList = Object.values(board.cards).filter(c => c.list_id === listId);
+
+  const card = {
+    id: cardId,
+    list_id: listId,
+    board_id: board.id,
+    title: title,
+    position: cardsInList.length,
+    assignee_id: currentUser.id,
+    label_color: currentUser.color,
+    created_by: currentUser.id,
+  };
+
+  board.cards[cardId] = card;
+  renderBoard();
+  flashCard(cardId);
+  hideAddForm(listId);
+
+  // Publish
+  publishEvent('board:' + board.id + '/card.created', 'card.created', card);
+}
+
+// ─── Add List ───────────────────────────────────────────────────────────
+function addList() {
+  const title = prompt('List title:');
+  if (!title) return;
+
+  const listId = genId();
+  board.lists.push({ id: listId, title, position: board.lists.length });
+  renderBoard();
+
+  publishEvent('board:' + board.id + '/list.created', 'list.created', {
+    id: listId,
+    board_id: board.id,
+    title,
+    position: board.lists.length - 1,
+  });
+}
+
+// ─── Render: Chat ───────────────────────────────────────────────────────
+function renderChat() {
+  const container = $('chat-messages');
+  const msgs = chatMessages[currentChannel] || [];
+
+  container.innerHTML = msgs.map(msg => {
+    const user = USERS.find(u => u.id === msg.userId) || { username: msg.username || '?', color: '#666' };
+    return `
+      <div class="chat-msg ${msg.isNew ? 'new-flash' : ''}">
+        <div class="chat-msg-avatar" style="background:${user.color}">${(user.username || '?')[0]}</div>
+        <div class="chat-msg-body">
+          <div class="chat-msg-header">
+            <span class="chat-msg-name">${escHtml(user.username || msg.username)}</span>
+            <span class="chat-msg-time">${timeAgo(msg.createdAt)}</span>
+          </div>
+          <div class="chat-msg-text">${escHtml(msg.content)}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  container.scrollTop = container.scrollHeight;
+
+  // Clear isNew flag after render so the flash animation only plays once
+  msgs.forEach(m => { m.isNew = false; });
+}
+
+function renderTypingIndicator() {
+  const el = $('typing-indicator');
+  const users = typingUsers[currentChannel] || {};
+  const names = Object.keys(users).map(uid => {
+    const u = USERS.find(u => u.id === uid);
+    return u ? u.username : uid;
+  });
+
+  if (names.length === 0) {
+    el.textContent = '';
+  } else if (names.length === 1) {
+    el.textContent = names[0] + ' is typing...';
+  } else {
+    el.textContent = names.join(', ') + ' are typing...';
+  }
+}
+
+function switchChannel(chId) {
+  currentChannel = chId;
+  $('chat-channel-name').textContent = chId.replace('ch-', '');
+
+  document.querySelectorAll('.sidebar-item').forEach(el => {
+    if (el.id === chId + '-btn') el.classList.add('active');
+    else if (el.id && el.id.startsWith('ch-')) el.classList.remove('active');
+  });
+
+  if (!chatMessages[chId]) fetchChatMessages(chId);
+  else renderChat();
+}
+
+// Chat input
+$('chat-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    const content = e.target.value.trim();
+    if (!content) return;
+
+    const msg = {
+      id: genId(),
+      channelId: currentChannel,
+      userId: currentUser.id,
+      username: currentUser.username,
+      content: content,
+      createdAt: new Date().toISOString(),
+    };
+
+    // Track this ID so we suppress the server echo
+    sentMessageIds.add(msg.id);
+
+    if (!chatMessages[currentChannel]) chatMessages[currentChannel] = [];
+    chatMessages[currentChannel].push(msg);
+    renderChat();
+    e.target.value = '';
+
+    // Send via WS PUBLISH (low latency, no HTTP overhead)
+    wsSend({ type: 'PUBLISH', topic: `channel:${currentChannel}:chat/message`, event_type: 'message.created', payload: msg });
+  }
+});
+
+// Typing indicator — throttled, uses WS PUBLISH
+let typingTimeout = null;
+let lastTypingSent = 0;
+$('chat-input').addEventListener('input', () => {
+  const now = Date.now();
+  if (now - lastTypingSent < 2000) return; // throttle: max once per 2s
+  lastTypingSent = now;
+
+  if (typingTimeout) clearTimeout(typingTimeout);
+  wsSend({ type: 'PUBLISH', topic: `channel:${currentChannel}:chat/typing`, event_type: 'user.typing', payload: {
+    userId: currentUser.id,
+    username: currentUser.username,
+    channelId: currentChannel,
+  }});
+  typingTimeout = setTimeout(() => {
+    wsSend({ type: 'PUBLISH', topic: `channel:${currentChannel}:chat/typing`, event_type: 'user.stopped_typing', payload: {
+      userId: currentUser.id,
+      channelId: currentChannel,
+    }});
+  }, 4000);
+});
+
+// ─── Render: Presence ───────────────────────────────────────────────────
+function renderPresence() {
+  const bar = $('presence-bar');
+  // Always show current user + online users
+  const allIds = new Set([currentUser.id, ...onlineUsers]);
+  bar.innerHTML = [...allIds].map(uid => {
+    const u = USERS.find(u => u.id === uid);
+    if (!u) return '';
+    return `
+      <div class="presence-avatar" style="background:${u.color}" title="${u.username}">
+        ${u.username[0]}
+        <span class="tooltip">${u.username}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+// ─── Live Cursors ───────────────────────────────────────────────────────
+const boardArea = $('board-area');
+let cursorThrottle = 0;
+let cachedBoardRect = null;
+let boardRectDirty = true;
+
+// Invalidate cached rect on resize/scroll
+window.addEventListener('resize', () => { boardRectDirty = true; });
+boardArea.addEventListener('scroll', () => { boardRectDirty = true; });
+
+function getBoardRect() {
+  if (boardRectDirty || !cachedBoardRect) {
+    cachedBoardRect = boardArea.getBoundingClientRect();
+    boardRectDirty = false;
+  }
+  return cachedBoardRect;
+}
+
+boardArea.addEventListener('mousemove', (e) => {
+  if (!currentUser || !authenticated) return;
+  const now = Date.now();
+  if (now - cursorThrottle < 33) return; // ~30fps
+  cursorThrottle = now;
+
+  const rect = getBoardRect();
+  // Use content-relative coordinates accounting for scroll
+  const x = (e.clientX - rect.left + boardArea.scrollLeft) / boardArea.scrollWidth;
+  const y = (e.clientY - rect.top + boardArea.scrollTop) / boardArea.scrollHeight;
+
+  // Send via WS PUBLISH (no HTTP overhead, ultra-low latency)
+  wsSend({ type: 'PUBLISH', topic: 'board:' + board.id + ':cursors/move', event_type: 'cursor.moved', payload: {
+    userId: currentUser.id,
+    username: currentUser.username,
+    color: currentUser.color,
+    x, y,
+  }});
+});
+
+// ─── rAF Cursor Interpolation Loop ─────────────────────────────────────
+// Instead of rebuilding innerHTML on every event, we keep persistent DOM
+// elements and smoothly interpolate (lerp) towards target positions.
+const cursorOverlay = $('cursor-overlay');
+const LERP_FACTOR = 0.25; // 0..1 — higher = snappier
+
+function cursorAnimationLoop() {
+  requestAnimationFrame(cursorAnimationLoop);
+
+  const entries = Object.entries(remoteCursors);
+  if (entries.length === 0) return;
+
+  // Convert normalized coords to pixels using scrollWidth/scrollHeight
+  const sw = boardArea.scrollWidth;
+  const sh = boardArea.scrollHeight;
+
+  for (const [uid, cur] of entries) {
+    // Lerp current towards target
+    cur.x += (cur.tx - cur.x) * LERP_FACTOR;
+    cur.y += (cur.ty - cur.y) * LERP_FACTOR;
+
+    const px = cur.x * sw;
+    const py = cur.y * sh;
+
+    // Create DOM element lazily
+    if (!cur.el) {
+      cur.el = document.createElement('div');
+      cur.el.className = 'remote-cursor';
+      cur.el.innerHTML = `
+        <svg viewBox="0 0 16 20" fill="${cur.color}">
+          <path d="M0 0 L16 12 L8 12 L6 20 Z"/>
+        </svg>
+        <span class="cursor-label" style="background:${cur.color}">${escHtml(cur.username)}</span>
+      `;
+      cursorOverlay.appendChild(cur.el);
+    }
+
+    // Position via transform (GPU-accelerated, no layout thrashing)
+    cur.el.style.transform = `translate(${px}px, ${py}px)`;
+  }
+}
+requestAnimationFrame(cursorAnimationLoop);
+
+// Legacy renderCursors — no-op, kept for compatibility
+function renderCursors() {}
+
+// ─── Adapter Switch ─────────────────────────────────────────────────────
+function switchAdapter(adapter) {
+  currentAdapter = adapter;
+  updateAdapterUI();
+  addDebugEvent('ws', 'adapter.switch', adapter);
+
+  // In a real setup this would POST to the server to reconfigure
+  // For now it's a visual indicator in the debug panel
+}
+
+function updateAdapterUI() {
+  const isPg = currentAdapter === 'postgres';
+
+  $('adapter-pg-btn').classList.toggle('active', isPg);
+  $('adapter-mongo-btn').classList.toggle('active', !isPg);
+  $('pg-badge').style.display = isPg ? 'inline' : 'none';
+  $('mongo-badge').style.display = !isPg ? 'inline' : 'none';
+
+  $('dbg-pg-btn').className = 'adapter-btn' + (isPg ? ' active-pg' : '');
+  $('dbg-mongo-btn').className = 'adapter-btn' + (!isPg ? ' active-mongo' : '');
+  $('stat-adapter').textContent = isPg ? 'PG' : 'Mongo';
+}
+
+// ─── Debug Panel ────────────────────────────────────────────────────────
+$('debug-toggle').addEventListener('click', () => {
+  $('debug-panel').classList.toggle('open');
+});
+
+function addDebugEvent(source, type, detail) {
+  debugEventCount++;
+  $('stat-events').textContent = debugEventCount;
+
+  const ev = { source, type, detail, time: new Date().toLocaleTimeString() };
+  debugEvents.unshift(ev);
+  if (debugEvents.length > 200) debugEvents.pop();
+
+  const container = $('debug-events');
+  const div = document.createElement('div');
+  div.className = 'debug-event';
+  div.innerHTML = `
+    <span class="debug-badge ${source}">${source}</span>
+    <span class="debug-event-type">${escHtml(type)}</span>
+    <span class="debug-event-detail">${escHtml(detail || '')}</span>
+    <span class="debug-event-time">${ev.time}</span>
+  `;
+
+  container.insertBefore(div, container.firstChild);
+  if (container.children.length > 200) container.removeChild(container.lastChild);
+}
+
+function clearDebugEvents() {
+  debugEvents = [];
+  debugEventCount = 0;
+  $('debug-events').innerHTML = '';
+  $('stat-events').textContent = '0';
+}
+
+// ─── Initialize ─────────────────────────────────────────────────────────
+renderLogin();
+
+// Ping to keep connection alive
+setInterval(() => {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    wsSend({ type: 'PING' });
+  }
+}, 15000);
+
+// Health check indicator
+async function checkHealth() {
+  try {
+    const r = await fetch('/v1/health');
+    const d = await r.json();
+    if (d.status === 'ok') {
+      addDebugEvent('bus', 'health', 'ok');
+    }
+  } catch(e) { /* ignore */ }
+}
+setTimeout(checkHealth, 1000);
+
+</script>
+</body>
+</html>
