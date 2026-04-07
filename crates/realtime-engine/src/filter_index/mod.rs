@@ -162,7 +162,7 @@ mod tests {
         let index = FilterIndex::new();
         for i in 0..100 {
             let sub = make_sub(i, &format!("sub-{i}"), "broadcast", None);
-            index.add_subscription(&sub);
+            index.add_subscription(&sub, None);
         }
 
         let event = EventEnvelope::new(TopicPath::new("broadcast"), "notify", Bytes::from("{}"));
@@ -179,7 +179,7 @@ mod tests {
                 FilterValue::String("created".to_string()),
             );
             let sub = make_sub(i, &format!("sub-{i}"), "orders/*", Some(filter));
-            index.add_subscription(&sub);
+            index.add_subscription(&sub, None);
         }
         for i in 50..100 {
             let filter = FilterExpr::Eq(
@@ -187,7 +187,7 @@ mod tests {
                 FilterValue::String("deleted".to_string()),
             );
             let sub = make_sub(i, &format!("sub-{i}"), "orders/*", Some(filter));
-            index.add_subscription(&sub);
+            index.add_subscription(&sub, None);
         }
 
         let event = EventEnvelope::new(
@@ -198,7 +198,7 @@ mod tests {
         let bitmap = index.evaluate(&event);
         assert_eq!(bitmap.len(), 50);
         for id in &bitmap {
-            assert!(id < 50, "Only conn_ids 0-49 should match 'created'");
+            assert!(id < 50, "Only slots 0-49 should match 'created'");
         }
     }
 
@@ -213,7 +213,7 @@ mod tests {
             ],
         );
         let sub = make_sub(1, "sub-1", "orders/*", Some(filter));
-        index.add_subscription(&sub);
+        index.add_subscription(&sub, None);
 
         let event1 = EventEnvelope::new(
             TopicPath::new("orders/created"),
@@ -239,7 +239,7 @@ mod tests {
     fn test_remove_subscription() {
         let index = FilterIndex::new();
         let sub = make_sub(1, "sub-1", "orders/created", None);
-        index.add_subscription(&sub);
+        index.add_subscription(&sub, None);
 
         let event = EventEnvelope::new(
             TopicPath::new("orders/created"),
