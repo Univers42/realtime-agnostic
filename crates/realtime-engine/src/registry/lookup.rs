@@ -51,16 +51,12 @@ impl SubscriptionRegistry {
     /// Optimized lookup using the bitmap index with slot-based dispatch.
     ///
     /// Returns a `Vec` of matching `(conn_id, sub_id, gateway_node)` tuples.
-    /// Internally uses [`for_each_match()`] for O(1)-per-slot dispatch.
+    /// Uses [`collect_matches()`] internally for pre-allocated Vec sizing.
     pub fn lookup_matches_bitmap(
         &self,
         event: &EventEnvelope,
     ) -> Vec<(ConnectionId, SubscriptionId, Option<NodeId>)> {
-        let mut matches = Vec::new();
-        self.for_each_match(event, |conn_id, sub_id, node| {
-            matches.push((conn_id, sub_id.clone(), node));
-        });
-        matches
+        self.filter_index.collect_matches(event)
     }
 
     /// Invoke `callback` for each subscription matching `event`.
