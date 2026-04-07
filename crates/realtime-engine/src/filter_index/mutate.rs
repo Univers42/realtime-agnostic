@@ -3,7 +3,7 @@
 //! Uses slot-based allocation with tracked composite keys for O(k) removal
 //! where k = number of filter predicates.
 
-use realtime_core::{filter::FilterExpr, NodeId, Subscription};
+use realtime_core::{filter::{FieldPath, FilterExpr}, NodeId, Subscription};
 
 use super::FilterIndex;
 
@@ -122,10 +122,15 @@ impl FilterIndex {
                 let vs = Self::value_to_string(value);
                 let key = Self::make_index_key(pattern_key, &field.0, &vs);
                 self.index.entry(key.clone()).or_default().insert(slot_id);
-                self.fields_by_pattern
-                    .entry(pattern_key.to_string())
-                    .or_default()
-                    .insert(field.0.clone());
+                {
+                    let mut fields = self
+                        .fields_by_pattern
+                        .entry(pattern_key.to_string())
+                        .or_default();
+                    if !fields.iter().any(|f| f.0 == field.0) {
+                        fields.push(FieldPath::new(field.0.clone()));
+                    }
+                }
                 tracked_keys.push(key);
             }
             FilterExpr::In(field, values) => {
@@ -135,10 +140,15 @@ impl FilterIndex {
                     self.index.entry(key.clone()).or_default().insert(slot_id);
                     tracked_keys.push(key);
                 }
-                self.fields_by_pattern
-                    .entry(pattern_key.to_string())
-                    .or_default()
-                    .insert(field.0.clone());
+                {
+                    let mut fields = self
+                        .fields_by_pattern
+                        .entry(pattern_key.to_string())
+                        .or_default();
+                    if !fields.iter().any(|f| f.0 == field.0) {
+                        fields.push(FieldPath::new(field.0.clone()));
+                    }
+                }
             }
             FilterExpr::And(l, r) | FilterExpr::Or(l, r) => {
                 self.index_filter(pattern_key, slot_id, l, tracked_keys);

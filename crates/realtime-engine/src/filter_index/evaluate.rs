@@ -16,7 +16,12 @@ use super::FilterIndex;
 impl FilterIndex {
     /// Evaluate all filters against an event, returning a bitmap of slot IDs.
     pub fn evaluate(&self, event: &EventEnvelope) -> RoaringBitmap {
-        let parsed: Option<serde_json::Value> = serde_json::from_slice(&event.payload).ok();
+        // Lazy parse: skip JSON deserialization when no fields are indexed.
+        let parsed: Option<serde_json::Value> = if self.fields_by_pattern.is_empty() {
+            None
+        } else {
+            serde_json::from_slice(&event.payload).ok()
+        };
         self.evaluate_inner(event, parsed.as_ref())
     }
 
@@ -43,19 +48,17 @@ impl FilterIndex {
 
             // Look up indexed fields using flat composite keys.
             if let Some(fields) = self.fields_by_pattern.get(pattern_key.as_str()) {
-                for field_ref in fields.iter() {
-                    let field = field_ref.key();
-                    let field_path = FieldPath::new(field.clone());
+                for field_path in fields.value() {
                     if let Some(fv) = envelope_field_getter_cached(
                         event,
-                        &field_path,
+                        field_path,
                         parsed_payload,
                     ) {
                         let vs = Self::value_to_string(&fv);
                         key_buf.clear();
                         key_buf.push_str(pattern_key);
                         key_buf.push('\0');
-                        key_buf.push_str(field.as_str());
+                        key_buf.push_str(&field_path.0);
                         key_buf.push('\0');
                         key_buf.push_str(&vs);
                         if let Some(bitmap) = self.index.get(key_buf.as_str()) {
@@ -78,39 +81,102 @@ impl FilterIndex {
     where
         F: FnMut(ConnectionId, &SubscriptionId, Option<NodeId>),
     {
-        let parsed: Option<serde_json::Value> =
-            serde_json::from_slice(&event.payload).ok();
+        // Lazy JSON parse: skip when there are no indexed fields.
+        // Non-exact slots that need post-filtering will trigger a late parse.
+        let has_fields = !self.fields_by_pattern.is_empty();
+        let parsed: Option<serde_json::Value> = if has_fields {
+            serde_json::from_slice(&event.payload).ok()
+        } else {
+            None
+        };
         let bitmap = self.evaluate_inner(event, parsed.as_ref());
         if bitmap.is_empty() {
             return 0;
         }
 
+        // Late parse is deferred until the first non-exact slot needs it.
+        let mut late_parsed: Option<serde_json::Value> = None;
+
         let slots = self.slots.read().unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut count = 0;
 
         for slot_id in &bitmap {
-            if let Some(Some(slot)) = slots.get(slot_id as usize) {
+            // SAFETY: slot_id was inserted by alloc_slot and is always < slots.len().
+            let entry = unsafe { slots.get_unchecked(slot_id as usize) };
+            if let Some(slot) = entry {
                 if slot.bitmap_exact {
                     // Fast path: bitmap is exact, no post-filter needed.
                     callback(slot.conn_id, &slot.sub_id, slot.gateway_node);
                     count += 1;
                 } else if let Some(ref f) = slot.filter {
-                    // Slow path: re-evaluate the exact filter expression.
+                    // Parse payload on demand for non-exact post-filtering.
+                    if late_parsed.is_none() && parsed.is_none() {
+                        late_parsed = serde_json::from_slice(&event.payload).ok();
+                    }
+                    let parsed_ref = parsed.as_ref().or(late_parsed.as_ref());
                     let getter = |fld: &FieldPath| {
-                        envelope_field_getter_cached(event, fld, parsed.as_ref())
+                        envelope_field_getter_cached(event, fld, parsed_ref)
                     };
                     if f.evaluate(&getter) {
                         callback(slot.conn_id, &slot.sub_id, slot.gateway_node);
                         count += 1;
                     }
                 } else {
-                    // No filter, should always be bitmap_exact=true.
-                    // Defensive: include anyway.
                     callback(slot.conn_id, &slot.sub_id, slot.gateway_node);
                     count += 1;
                 }
             }
         }
         count
+    }
+
+    /// Collect all matching subscriptions into a pre-allocated `Vec`.
+    ///
+    /// Like [`for_each_match()`] but returns a `Vec` sized to the bitmap
+    /// length upfront, avoiding ~14 reallocations at 10K matches.
+    pub fn collect_matches(
+        &self,
+        event: &EventEnvelope,
+    ) -> Vec<(ConnectionId, SubscriptionId, Option<NodeId>)> {
+        let has_fields = !self.fields_by_pattern.is_empty();
+        let parsed: Option<serde_json::Value> = if has_fields {
+            serde_json::from_slice(&event.payload).ok()
+        } else {
+            None
+        };
+        let bitmap = self.evaluate_inner(event, parsed.as_ref());
+        if bitmap.is_empty() {
+            return Vec::new();
+        }
+
+        let mut late_parsed: Option<serde_json::Value> = None;
+
+        #[allow(clippy::cast_possible_truncation)]
+        let mut matches = Vec::with_capacity(bitmap.len() as usize);
+        let slots = self.slots.read().unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        for slot_id in &bitmap {
+            // SAFETY: slot_id was inserted by alloc_slot and is always < slots.len().
+            let entry = unsafe { slots.get_unchecked(slot_id as usize) };
+            if let Some(slot) = entry {
+                if slot.bitmap_exact {
+                    matches.push((slot.conn_id, slot.sub_id.clone(), slot.gateway_node));
+                } else if let Some(ref f) = slot.filter {
+                    if late_parsed.is_none() && parsed.is_none() {
+                        late_parsed = serde_json::from_slice(&event.payload).ok();
+                    }
+                    let parsed_ref = parsed.as_ref().or(late_parsed.as_ref());
+                    let getter = |fld: &FieldPath| {
+                        envelope_field_getter_cached(event, fld, parsed_ref)
+                    };
+                    if f.evaluate(&getter) {
+                        matches.push((slot.conn_id, slot.sub_id.clone(), slot.gateway_node));
+                    }
+                } else {
+                    matches.push((slot.conn_id, slot.sub_id.clone(), slot.gateway_node));
+                }
+            }
+        }
+        matches
     }
 }

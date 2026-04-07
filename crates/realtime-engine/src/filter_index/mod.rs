@@ -20,9 +20,9 @@ mod mutate;
 use std::borrow::Cow;
 use std::sync::{Mutex, RwLock};
 
-use dashmap::{DashMap, DashSet};
+use dashmap::DashMap;
 use realtime_core::{
-    filter::{FilterExpr, FilterValue},
+    filter::{FieldPath, FilterExpr, FilterValue},
     ConnectionId, NodeId, SubscriptionId, TopicPattern,
 };
 use roaring::RoaringBitmap;
@@ -64,7 +64,11 @@ pub struct FilterIndex {
     /// All registered patterns for matching incoming events.
     patterns: DashMap<String, TopicPattern>,
     /// Fields indexed per pattern (for targeted evaluation lookups).
-    fields_by_pattern: DashMap<String, DashSet<String>>,
+    ///
+    /// Stored as `Vec<FieldPath>` instead of `DashSet<String>` to avoid
+    /// shard-lock overhead during iteration and eliminate `FieldPath::new`
+    /// allocation from the hot path. Dedup is maintained on insert.
+    fields_by_pattern: DashMap<String, Vec<FieldPath>>,
     /// Per-subscription tracked index keys for O(k) targeted removal.
     sub_keys: DashMap<(ConnectionId, SubscriptionId), Vec<String>>,
     /// Dispatch slab: `slot_id` → dispatch info. `RwLock` for concurrent reads.
