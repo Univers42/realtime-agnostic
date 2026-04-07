@@ -63,6 +63,10 @@ pub struct FilterIndex {
     unfiltered: DashMap<String, RoaringBitmap>,
     /// All registered patterns for matching incoming events.
     patterns: DashMap<String, TopicPattern>,
+    /// Fields indexed per pattern (for targeted evaluation lookups).
+    fields_by_pattern: DashMap<String, DashSet<String>>,
+    /// Per-subscription tracked index keys for O(k) targeted removal.
+    sub_keys: DashMap<(ConnectionId, SubscriptionId), Vec<String>>,
 }
 
 impl FilterIndex {
