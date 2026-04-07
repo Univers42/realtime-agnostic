@@ -90,6 +90,18 @@ impl FilterIndex {
             slot_by_sub: DashMap::new(),
         }
     }
+
+    /// Build a composite index key: `"pattern\0field\0value"`.
+    fn make_index_key(pattern: &str, field: &str, value: &str) -> String {
+        let mut key = String::with_capacity(pattern.len() + field.len() + value.len() + 2);
+        key.push_str(pattern);
+        key.push('\0');
+        key.push_str(field);
+        key.push('\0');
+        key.push_str(value);
+        key
+    }
+
     /// Convert a [`FilterValue`] to a string for composite key construction.
     ///
     /// Returns `Cow::Borrowed` for string values (zero-alloc fast path).
@@ -111,17 +123,6 @@ impl FilterIndex {
             FilterExpr::Or(l, r) => Self::is_filter_exact(l) && Self::is_filter_exact(r),
             FilterExpr::And(_, _) | FilterExpr::Ne(_, _) | FilterExpr::Not(_) => false,
         }
-    }
-
-    /// Build a composite index key: `"pattern\0field\0value"`.
-    fn make_index_key(pattern: &str, field: &str, value: &str) -> String {
-        let mut key = String::with_capacity(pattern.len() + field.len() + value.len() + 2);
-        key.push_str(pattern);
-        key.push('\0');
-        key.push_str(field);
-        key.push('\0');
-        key.push_str(value);
-        key
     }
 }
 
