@@ -94,3 +94,4 @@ Update 92: improvements
 Update 93: improvements
 Update 94: improvements
 Update 95: improvements
+Update 96: improvements
