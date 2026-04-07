@@ -1,4 +1,4 @@
-.PHONY: help build test up down logs clean seed status dev audit \
+.PHONY: help build test up down logs clean seed status dev audit audit-local audit-fetch \
 	docker-login docker-build docker-push docker-update docker-tag docker-pull \
         docker-release docker-build-release docker-push-release \
         docker-login-ghcr docker-ghcr-push
@@ -33,13 +33,14 @@ test: ## Run all tests (78 unit + integration)
 check: ## Check compilation with zero warnings
 	cargo check --workspace 2>&1 | grep -v "Compiling\|Checking\|Finished"
 
-audit: ## Run full code audit (fmt, clippy, tests)
-	@echo "Formatting..."
-	cargo fmt --all -- --check
-	@echo "Running clippy..."
-	cargo clippy --all-targets --all-features
-	@echo "Running tests..."
-	cargo test --workspace
+audit: ## Run full audit: local checks + SonarCloud report → reports/
+	@./scripts/audit.sh
+
+audit-local: ## Run local-only audit (fmt, clippy, test, CVE, deps)
+	@./scripts/audit.sh --local-only
+
+audit-fetch: ## Fetch SonarCloud report only → reports/sonarcloud-issues.{json,txt}
+	@./scripts/audit.sh --fetch-only
 
 up: ## Start databases + server via Docker Compose
 	$(COMPOSE) up --build -d

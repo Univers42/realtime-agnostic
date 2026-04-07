@@ -25,6 +25,7 @@ run_bench() {
         | grep -E "time:|Benchmarking|Performance|change:" &
     PIDS+=($!)
     NAMES+=("$name")
+    return 0
 }
 
 if [[ $# -eq 0 ]]; then

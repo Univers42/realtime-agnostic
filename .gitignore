@@ -3,5 +3,6 @@
 .env
 sandbox/mongo_data/
 sandbox/pg_data/
+reports/
 *.log
 .DS_Store

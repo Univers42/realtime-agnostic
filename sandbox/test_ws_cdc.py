@@ -2,7 +2,6 @@
 """End-to-end test: WebSocket client subscribes, then PG/Mongo CDC events are triggered."""
 import asyncio
 import json
-import subprocess
 import sys
 
 async def main():
@@ -33,11 +32,13 @@ async def main():
         print(f"{name} MONGO SUB: {r}")
 
     print("\n--- Triggering PostgreSQL INSERT (via docker exec) ---")
-    subprocess.run([
+    proc = await asyncio.create_subprocess_exec(
         "docker", "compose", "exec", "-T", "postgres", "psql", "-U", "syncspace", "-c",
         "INSERT INTO cards (id, list_id, title, description, position, created_by) "
-        "VALUES ('card-e2e-test', 'list-backlog', 'E2E Test Card', 'Created by test script', 99, 'user-alice');"
-    ], capture_output=True, text=True)
+        "VALUES ('card-e2e-test', 'list-backlog', 'E2E Test Card', 'Created by test script', 99, 'user-alice');",
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    await proc.communicate()
     print("INSERT done, waiting for events...")
 
     # Collect events from both clients
@@ -50,12 +51,14 @@ async def main():
         except asyncio.TimeoutError:
             print(f"  {name}: NO PG event (timeout)")
 
-    print(f"\n--- Triggering MongoDB INSERT (via docker exec) ---")
-    subprocess.run([
+    print("\n--- Triggering MongoDB INSERT (via docker exec) ---")
+    proc = await asyncio.create_subprocess_exec(
         "docker", "compose", "exec", "-T", "mongo", "mongosh", "syncspace", "--quiet", "--eval",
         "db.chat_messages.insertOne({channelId:'ch-general',userId:'user-bob',username:'Bob',"
-        "content:'E2E test message from Mongo!',createdAt:new Date()})"
-    ], capture_output=True, text=True)
+        "content:'E2E test message from Mongo!',createdAt:new Date()})",
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    await proc.communicate()
     print("INSERT done, waiting for events...")
 
     mongo_events = []
@@ -70,7 +73,7 @@ async def main():
     await ws1.close()
     await ws2.close()
 
-    print(f"\n=== RESULTS ===")
+    print("\n=== RESULTS ===")
     print(f"PG CDC events received:    {len(pg_events)}/2")
     print(f"Mongo CDC events received: {len(mongo_events)}/2")
 

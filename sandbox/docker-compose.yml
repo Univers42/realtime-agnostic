@@ -3,9 +3,9 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: syncspace
-      POSTGRES_PASSWORD: syncspace
-      POSTGRES_DB: syncspace
+      POSTGRES_USER: ${POSTGRES_USER:-syncspace}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-syncspace}
     ports:
       - "5434:5432"
     volumes:
@@ -73,7 +73,7 @@ services:
       REALTIME_PORT: "4000"
       REALTIME_AUTH: "noauth"
       REALTIME_STATIC_DIR: "/app/static"
-      REALTIME_PG_URL: "postgresql://syncspace:syncspace@postgres:5432/syncspace"
+      REALTIME_PG_URL: "postgresql://${POSTGRES_USER:-syncspace}:${POSTGRES_PASSWORD:?err}@postgres:5432/${POSTGRES_DB:-syncspace}"
       REALTIME_PG_CHANNEL: "realtime_events"
       REALTIME_MONGO_URI: "mongodb://mongo:27017"
       REALTIME_MONGO_DB: "syncspace"

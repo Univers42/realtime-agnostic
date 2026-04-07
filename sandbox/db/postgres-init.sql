@@ -128,18 +128,18 @@ CREATE TABLE IF NOT EXISTS realtime_presence (
 );
 
 -- ─── Triggers ───────────────────────────────────────────────────────────
-CREATE TRIGGER boards_realtime
-  AFTER INSERT OR UPDATE OR DELETE ON boards
-  FOR EACH ROW EXECUTE FUNCTION realtime_notify('realtime_events');
-
-CREATE TRIGGER lists_realtime
-  AFTER INSERT OR UPDATE OR DELETE ON lists
-  FOR EACH ROW EXECUTE FUNCTION realtime_notify('realtime_events');
-
-CREATE TRIGGER cards_realtime
-  AFTER INSERT OR UPDATE OR DELETE ON cards
-  FOR EACH ROW EXECUTE FUNCTION realtime_notify('realtime_events');
-
-CREATE TRIGGER channels_realtime
-  AFTER INSERT OR UPDATE OR DELETE ON channels
-  FOR EACH ROW EXECUTE FUNCTION realtime_notify('realtime_events');
+-- Reuse a single channel name variable to avoid literal duplication (S1192).
+DO $trigger_setup$
+DECLARE
+  ch CONSTANT text := 'realtime_events';
+BEGIN
+  EXECUTE format(
+    'CREATE TRIGGER boards_realtime AFTER INSERT OR UPDATE OR DELETE ON boards FOR EACH ROW EXECUTE FUNCTION realtime_notify(%L)', ch);
+  EXECUTE format(
+    'CREATE TRIGGER lists_realtime AFTER INSERT OR UPDATE OR DELETE ON lists FOR EACH ROW EXECUTE FUNCTION realtime_notify(%L)', ch);
+  EXECUTE format(
+    'CREATE TRIGGER cards_realtime AFTER INSERT OR UPDATE OR DELETE ON cards FOR EACH ROW EXECUTE FUNCTION realtime_notify(%L)', ch);
+  EXECUTE format(
+    'CREATE TRIGGER channels_realtime AFTER INSERT OR UPDATE OR DELETE ON channels FOR EACH ROW EXECUTE FUNCTION realtime_notify(%L)', ch);
+END;
+$trigger_setup$;

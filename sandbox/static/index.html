@@ -1245,44 +1245,44 @@ body {
     <div class="sidebar">
       <div class="sidebar-section">
         <div class="sidebar-label">Widgets</div>
-        <div class="sidebar-item active" id="sidebar-kanban" onclick="switchTab('kanban')">
+        <div class="sidebar-item active" id="sidebar-kanban" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="switchTab('kanban')">
           <span class="icon">📋</span> Kanban Board
         </div>
-        <div class="sidebar-item" id="sidebar-whiteboard" onclick="switchTab('whiteboard')">
+        <div class="sidebar-item" id="sidebar-whiteboard" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="switchTab('whiteboard')">
           <span class="icon">🎨</span> Whiteboard
         </div>
-        <div class="sidebar-item" id="sidebar-notes" onclick="switchTab('notes')">
+        <div class="sidebar-item" id="sidebar-notes" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="switchTab('notes')">
           <span class="icon">📝</span> Notes
         </div>
-        <div class="sidebar-item" id="sidebar-stickies" onclick="switchTab('stickies')">
+        <div class="sidebar-item" id="sidebar-stickies" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="switchTab('stickies')">
           <span class="icon">🗒️</span> Sticky Wall
         </div>
-        <div class="sidebar-item" id="sidebar-polls" onclick="switchTab('polls')">
+        <div class="sidebar-item" id="sidebar-polls" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="switchTab('polls')">
           <span class="icon">📊</span> Polls
         </div>
-        <div class="sidebar-item" id="sidebar-timer" onclick="switchTab('timer')">
+        <div class="sidebar-item" id="sidebar-timer" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="switchTab('timer')">
           <span class="icon">⏱️</span> Timer
         </div>
-        <div class="sidebar-item" id="sidebar-pixels" onclick="switchTab('pixels')">
+        <div class="sidebar-item" id="sidebar-pixels" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="switchTab('pixels')">
           <span class="icon">🎮</span> Pixel Art
         </div>
       </div>
       <div class="sidebar-section">
         <div class="sidebar-label">Channels</div>
-        <div class="sidebar-item" id="ch-general-btn" onclick="switchChannel('ch-general')">
+        <div class="sidebar-item" id="ch-general-btn" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="switchChannel('ch-general')">
           <span class="icon">#</span> general
         </div>
-        <div class="sidebar-item" id="ch-random-btn" onclick="switchChannel('ch-random')">
+        <div class="sidebar-item" id="ch-random-btn" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="switchChannel('ch-random')">
           <span class="icon">#</span> random
         </div>
       </div>
       <div class="sidebar-section" style="margin-top:auto;">
         <div class="sidebar-label">Adapter</div>
-        <div class="sidebar-item" id="adapter-pg-btn" onclick="switchAdapter('postgres')" style="font-size:12px;">
+        <div class="sidebar-item" id="adapter-pg-btn" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="switchAdapter('postgres')" style="font-size:12px;">
           <span class="icon">🐘</span> PostgreSQL
           <span class="badge" id="pg-badge" style="display:none;">active</span>
         </div>
-        <div class="sidebar-item" id="adapter-mongo-btn" onclick="switchAdapter('mongo')" style="font-size:12px;">
+        <div class="sidebar-item" id="adapter-mongo-btn" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="switchAdapter('mongo')" style="font-size:12px;">
           <span class="icon">🍃</span> MongoDB
           <span class="badge" id="mongo-badge" style="display:none;">active</span>
         </div>
@@ -1323,14 +1323,14 @@ body {
             <button class="wb-tool" data-tool="eraser" title="Eraser">⌫</button>
             <div class="wb-separator"></div>
             <!-- Colors -->
-            <div class="wb-color-btn active" data-color="#e2e5f0" style="background:#e2e5f0" onclick="wbSetColor('#e2e5f0')"></div>
-            <div class="wb-color-btn" data-color="#ef4444" style="background:#ef4444" onclick="wbSetColor('#ef4444')"></div>
-            <div class="wb-color-btn" data-color="#f97316" style="background:#f97316" onclick="wbSetColor('#f97316')"></div>
-            <div class="wb-color-btn" data-color="#eab308" style="background:#eab308" onclick="wbSetColor('#eab308')"></div>
-            <div class="wb-color-btn" data-color="#22c55e" style="background:#22c55e" onclick="wbSetColor('#22c55e')"></div>
-            <div class="wb-color-btn" data-color="#3b82f6" style="background:#3b82f6" onclick="wbSetColor('#3b82f6')"></div>
-            <div class="wb-color-btn" data-color="#8b5cf6" style="background:#8b5cf6" onclick="wbSetColor('#8b5cf6')"></div>
-            <div class="wb-color-btn" data-color="#ec4899" style="background:#ec4899" onclick="wbSetColor('#ec4899')"></div>
+            <div class="wb-color-btn active" data-color="#e2e5f0" style="background:#e2e5f0" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="wbSetColor('#e2e5f0')"></div>
+            <div class="wb-color-btn" data-color="#ef4444" style="background:#ef4444" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="wbSetColor('#ef4444')"></div>
+            <div class="wb-color-btn" data-color="#f97316" style="background:#f97316" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="wbSetColor('#f97316')"></div>
+            <div class="wb-color-btn" data-color="#eab308" style="background:#eab308" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="wbSetColor('#eab308')"></div>
+            <div class="wb-color-btn" data-color="#22c55e" style="background:#22c55e" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="wbSetColor('#22c55e')"></div>
+            <div class="wb-color-btn" data-color="#3b82f6" style="background:#3b82f6" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="wbSetColor('#3b82f6')"></div>
+            <div class="wb-color-btn" data-color="#8b5cf6" style="background:#8b5cf6" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="wbSetColor('#8b5cf6')"></div>
+            <div class="wb-color-btn" data-color="#ec4899" style="background:#ec4899" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="wbSetColor('#ec4899')"></div>
             <div class="wb-separator"></div>
             <!-- Stroke width -->
             <button class="wb-stroke-btn active" data-width="2" onclick="wbSetStroke(2)" title="Thin">━</button>
@@ -1384,7 +1384,7 @@ body {
             <button class="timer-mode-btn" id="timer-mode-countdown" onclick="setTimerMode('countdown')">Countdown</button>
           </div>
           <div class="timer-countdown-set" id="timer-countdown-set" style="display:none;">
-            <label>Minutes:</label>
+            <label for="timer-countdown-min">Minutes:</label>
             <input type="number" id="timer-countdown-min" value="5" min="1" max="120">
           </div>
           <div class="timer-display" id="timer-display">00:00.00</div>
@@ -1405,22 +1405,22 @@ body {
             <button class="pixel-tool-btn" data-ptool="fill" onclick="pixelSetTool('fill')" title="Fill">🪣</button>
             <div class="wb-separator"></div>
             <!-- 16 colors -->
-            <div class="pixel-color-btn active" data-pcolor="#000000" style="background:#000000" onclick="pixelSetColor('#000000')"></div>
-            <div class="pixel-color-btn" data-pcolor="#ffffff" style="background:#ffffff" onclick="pixelSetColor('#ffffff')"></div>
-            <div class="pixel-color-btn" data-pcolor="#ef4444" style="background:#ef4444" onclick="pixelSetColor('#ef4444')"></div>
-            <div class="pixel-color-btn" data-pcolor="#f97316" style="background:#f97316" onclick="pixelSetColor('#f97316')"></div>
-            <div class="pixel-color-btn" data-pcolor="#eab308" style="background:#eab308" onclick="pixelSetColor('#eab308')"></div>
-            <div class="pixel-color-btn" data-pcolor="#22c55e" style="background:#22c55e" onclick="pixelSetColor('#22c55e')"></div>
-            <div class="pixel-color-btn" data-pcolor="#3b82f6" style="background:#3b82f6" onclick="pixelSetColor('#3b82f6')"></div>
-            <div class="pixel-color-btn" data-pcolor="#8b5cf6" style="background:#8b5cf6" onclick="pixelSetColor('#8b5cf6')"></div>
-            <div class="pixel-color-btn" data-pcolor="#ec4899" style="background:#ec4899" onclick="pixelSetColor('#ec4899')"></div>
-            <div class="pixel-color-btn" data-pcolor="#06b6d4" style="background:#06b6d4" onclick="pixelSetColor('#06b6d4')"></div>
-            <div class="pixel-color-btn" data-pcolor="#14b8a6" style="background:#14b8a6" onclick="pixelSetColor('#14b8a6')"></div>
-            <div class="pixel-color-btn" data-pcolor="#a855f7" style="background:#a855f7" onclick="pixelSetColor('#a855f7')"></div>
-            <div class="pixel-color-btn" data-pcolor="#78716c" style="background:#78716c" onclick="pixelSetColor('#78716c')"></div>
-            <div class="pixel-color-btn" data-pcolor="#854d0e" style="background:#854d0e" onclick="pixelSetColor('#854d0e')"></div>
-            <div class="pixel-color-btn" data-pcolor="#1e293b" style="background:#1e293b" onclick="pixelSetColor('#1e293b')"></div>
-            <div class="pixel-color-btn" data-pcolor="#e2e5f0" style="background:#e2e5f0;border:1px solid var(--border)" onclick="pixelSetColor('#e2e5f0')"></div>
+            <div class="pixel-color-btn active" data-pcolor="#000000" style="background:#000000" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="pixelSetColor('#000000')"></div>
+            <div class="pixel-color-btn" data-pcolor="#ffffff" style="background:#ffffff" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="pixelSetColor('#ffffff')"></div>
+            <div class="pixel-color-btn" data-pcolor="#ef4444" style="background:#ef4444" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="pixelSetColor('#ef4444')"></div>
+            <div class="pixel-color-btn" data-pcolor="#f97316" style="background:#f97316" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="pixelSetColor('#f97316')"></div>
+            <div class="pixel-color-btn" data-pcolor="#eab308" style="background:#eab308" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="pixelSetColor('#eab308')"></div>
+            <div class="pixel-color-btn" data-pcolor="#22c55e" style="background:#22c55e" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="pixelSetColor('#22c55e')"></div>
+            <div class="pixel-color-btn" data-pcolor="#3b82f6" style="background:#3b82f6" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="pixelSetColor('#3b82f6')"></div>
+            <div class="pixel-color-btn" data-pcolor="#8b5cf6" style="background:#8b5cf6" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="pixelSetColor('#8b5cf6')"></div>
+            <div class="pixel-color-btn" data-pcolor="#ec4899" style="background:#ec4899" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="pixelSetColor('#ec4899')"></div>
+            <div class="pixel-color-btn" data-pcolor="#06b6d4" style="background:#06b6d4" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="pixelSetColor('#06b6d4')"></div>
+            <div class="pixel-color-btn" data-pcolor="#14b8a6" style="background:#14b8a6" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="pixelSetColor('#14b8a6')"></div>
+            <div class="pixel-color-btn" data-pcolor="#a855f7" style="background:#a855f7" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="pixelSetColor('#a855f7')"></div>
+            <div class="pixel-color-btn" data-pcolor="#78716c" style="background:#78716c" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="pixelSetColor('#78716c')"></div>
+            <div class="pixel-color-btn" data-pcolor="#854d0e" style="background:#854d0e" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="pixelSetColor('#854d0e')"></div>
+            <div class="pixel-color-btn" data-pcolor="#1e293b" style="background:#1e293b" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="pixelSetColor('#1e293b')"></div>
+            <div class="pixel-color-btn" data-pcolor="#e2e5f0" style="background:#e2e5f0;border:1px solid var(--border)" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="pixelSetColor('#e2e5f0')"></div>
             <div class="wb-separator"></div>
             <button class="pixel-tool-btn" onclick="pixelClear()" title="Clear" style="color:var(--red)">🗑</button>
           </div>
@@ -1484,6 +1484,23 @@ body {
      JAVASCRIPT
      ═══════════════════════════════════════════════════════════════════════ -->
 <script>
+// ─── Helper functions (extracted to reduce ternary nesting) ────────────
+function connectionDotClass(state) {
+  if (state === 'connected') return 'connected';
+  if (state === 'connecting') return 'connecting';
+  return '';
+}
+function connectionLabel(state) {
+  if (state === 'connected') return 'Connected';
+  if (state === 'connecting') return 'Connecting...';
+  return 'Disconnected';
+}
+function wbToolCursor(tool) {
+  if (tool === 'select') return 'default';
+  if (tool === 'eraser') return 'pointer';
+  return 'crosshair';
+}
+
 // ─── State ──────────────────────────────────────────────────────────────
 const USERS = [
   { id: 'user-alice', username: 'alice', email: 'alice@syncspace.dev', color: '#ef4444' },
@@ -1684,8 +1701,8 @@ function wsSend(obj) {
 function updateConnStatus(state) {
   const dot = $('conn-dot');
   const text = $('conn-text');
-  dot.className = 'conn-dot ' + (state === 'connected' ? 'connected' : state === 'connecting' ? 'connecting' : '');
-  text.textContent = state === 'connected' ? 'Connected' : state === 'connecting' ? 'Connecting...' : 'Disconnected';
+  dot.className = 'conn-dot ' + (connectionDotClass(state));
+  text.textContent = connectionLabel(state);
 }
 
 function handleServerMessage(msg) {
@@ -1761,81 +1778,66 @@ function subscribeToChannels() {
 }
 
 // ─── Event Handling ─────────────────────────────────────────────────────
+function parseEventPayload(event) {
+  if (!event.payload) return {};
+  if (typeof event.payload === 'string') {
+    try { return JSON.parse(event.payload); } catch(_ignored) { return {}; }
+  }
+  if (event.payload.data) {
+    try {
+      const dec = typeof event.payload.data === 'string'
+        ? event.payload.data
+        : new TextDecoder().decode(new Uint8Array(event.payload.data || event.payload));
+      return JSON.parse(dec);
+    } catch(_ignored) { return event.payload; }
+  }
+  return event.payload;
+}
+
+function trackLatency(event, recvTime) {
+  if (!event.timestamp) return;
+  const lat = recvTime - (event.timestamp / 1000000);
+  if (lat > 0 && lat < 10000) {
+    latencies.push(lat);
+    if (latencies.length > 50) latencies.shift();
+    const avg = Math.round(latencies.reduce((a,b) => a+b, 0) / latencies.length);
+    $('stat-latency').textContent = avg + 'ms';
+  }
+}
+
+function detectSource(topic, payload) {
+  if (topic.startsWith('pg/') || (payload.table && !topic.startsWith('mongo'))) return 'pg';
+  if (topic.startsWith('mongo/') || payload._id) return 'mongo';
+  return 'bus';
+}
+
+const EVENT_ROUTES = [
+  { match: (t, et, p) => t.includes('cards')   || et.includes('card')   || p.table === 'cards',  handler: (et, p) => handleCardEvent(et, p) },
+  { match: (t, et, p) => t.includes('lists')   || et.includes('list')   || p.table === 'lists',  handler: (et, p) => handleListEvent(et, p) },
+  { match: (t, et)    => t.includes('cursor')  || et === 'cursor.moved',                          handler: (_et, p) => handleCursorEvent(p) },
+  { match: (t, et)    => t.includes('chat/message') || et === 'message.created',                   handler: (et, p) => handleChatEvent(et, p) },
+  { match: (t, et)    => t.includes('presence') || et.includes('user.joined') || et.includes('user.left'), handler: (et, p) => handlePresenceEvent(et, p) },
+  { match: (t, et)    => t.includes('typing')  || et === 'user.typing' || et === 'user.stopped_typing',    handler: (_et, p) => handleTypingEvent(p) },
+  { match: (t, et)    => t.includes(':whiteboard/') || et.startsWith('shape.') || et === 'whiteboard.cleared', handler: (et, p) => handleWhiteboardEvent(et, p) },
+  { match: (t, et)    => t.includes(':editor/')     || et.startsWith('editor.'),          handler: (et, p) => handleEditorEvent(et, p) },
+  { match: (t, et)    => t.includes(':stickies/')   || et.startsWith('sticky.'),          handler: (et, p) => handleStickyEvent(et, p) },
+  { match: (t, et)    => t.includes(':polls/')      || et.startsWith('poll.'),            handler: (et, p) => handlePollEvent(et, p) },
+  { match: (t, et)    => t.includes(':timer/')      || et.startsWith('timer.'),           handler: (et, p) => handleTimerEvent(et, p) },
+  { match: (t, et)    => t.includes(':pixels/')     || et.startsWith('pixel.'),           handler: (et, p) => handlePixelEvent(et, p) },
+];
+
 function handleRealtimeEvent(event, recvTime) {
   if (!event) return;
   const topic = event.topic || '';
   const eventType = event.event_type || '';
-  let payload = {};
+  const payload = parseEventPayload(event);
 
-  if (event.payload) {
-    if (typeof event.payload === 'string') {
-      try { payload = JSON.parse(event.payload); } catch(e) { payload = {}; }
-    } else if (event.payload.data) {
-      try {
-        const dec = typeof event.payload.data === 'string'
-          ? event.payload.data
-          : new TextDecoder().decode(new Uint8Array(event.payload.data || event.payload));
-        payload = JSON.parse(dec);
-      } catch(e) { payload = event.payload; }
-    } else {
-      payload = event.payload;
-    }
-  }
-
-  // Track latency
-  if (event.timestamp) {
-    const lat = recvTime - (event.timestamp / 1000000);
-    if (lat > 0 && lat < 10000) {
-      latencies.push(lat);
-      if (latencies.length > 50) latencies.shift();
-      const avg = Math.round(latencies.reduce((a,b) => a+b, 0) / latencies.length);
-      $('stat-latency').textContent = avg + 'ms';
-    }
-  }
-
-  let source = 'bus';
-  if (topic.startsWith('pg/') || (payload.table && !topic.startsWith('mongo'))) source = 'pg';
-  else if (topic.startsWith('mongo/') || payload._id) source = 'mongo';
-
+  trackLatency(event, recvTime);
+  const source = detectSource(topic, payload);
   addDebugEvent(source, eventType || topic.split('/').pop(), truncate(JSON.stringify(payload), 80));
 
-  // Route event to handlers
-  if (topic.includes('cards') || eventType.includes('card') || (payload.table === 'cards')) {
-    handleCardEvent(eventType, payload);
-  }
-  if (topic.includes('lists') || eventType.includes('list') || (payload.table === 'lists')) {
-    handleListEvent(eventType, payload);
-  }
-  if (topic.includes('cursor') || eventType === 'cursor.moved') {
-    handleCursorEvent(payload);
-  }
-  if (topic.includes('chat/message') || eventType === 'message.created') {
-    handleChatEvent(eventType, payload);
-  }
-  if (topic.includes('presence') || eventType.includes('user.joined') || eventType.includes('user.left')) {
-    handlePresenceEvent(eventType, payload);
-  }
-  if (topic.includes('typing') || eventType === 'user.typing' || eventType === 'user.stopped_typing') {
-    handleTypingEvent(payload);
-  }
-  // Widget event routes
-  if (topic.includes(':whiteboard/') || eventType.startsWith('shape.') || eventType === 'whiteboard.cleared') {
-    handleWhiteboardEvent(eventType, payload);
-  }
-  if (topic.includes(':editor/') || eventType.startsWith('editor.')) {
-    handleEditorEvent(eventType, payload);
-  }
-  if (topic.includes(':stickies/') || eventType.startsWith('sticky.')) {
-    handleStickyEvent(eventType, payload);
-  }
-  if (topic.includes(':polls/') || eventType.startsWith('poll.')) {
-    handlePollEvent(eventType, payload);
-  }
-  if (topic.includes(':timer/') || eventType.startsWith('timer.')) {
-    handleTimerEvent(eventType, payload);
-  }
-  if (topic.includes(':pixels/') || eventType.startsWith('pixel.')) {
-    handlePixelEvent(eventType, payload);
+  for (const route of EVENT_ROUTES) {
+    if (route.match(topic, eventType, payload)) route.handler(eventType, payload);
   }
 }
 
@@ -1880,7 +1882,7 @@ function handleListEvent(eventType, payload) {
   const op = payload.operation || eventType;
 
   if (op === 'INSERT' || op === 'list.created') {
-    if (data.id && !board.lists.find(l => l.id === data.id)) {
+    if (data.id && !board.lists.some(l => l.id === data.id)) {
       board.lists.push({
         id: data.id,
         title: data.title || 'New List',
@@ -1899,7 +1901,12 @@ function handleCursorEvent(payload) {
   if (payload.userId === currentUser.id) return;
   const uid = payload.userId;
 
-  if (!remoteCursors[uid]) {
+  if (remoteCursors[uid]) {
+    remoteCursors[uid].tx = payload.x;
+    remoteCursors[uid].ty = payload.y;
+    remoteCursors[uid].color = payload.color || remoteCursors[uid].color;
+    remoteCursors[uid].username = payload.username || remoteCursors[uid].username;
+  } else {
     remoteCursors[uid] = {
       x: payload.x, y: payload.y,
       tx: payload.x, ty: payload.y,
@@ -1907,11 +1914,6 @@ function handleCursorEvent(payload) {
       username: payload.username || uid,
       el: null,
     };
-  } else {
-    remoteCursors[uid].tx = payload.x;
-    remoteCursors[uid].ty = payload.y;
-    remoteCursors[uid].color = payload.color || remoteCursors[uid].color;
-    remoteCursors[uid].username = payload.username || remoteCursors[uid].username;
   }
 
   clearTimeout(remoteCursors[uid]._timeout);
@@ -1937,7 +1939,7 @@ function handleChatEvent(eventType, payload) {
   }
 
   if (!chatMessages[chId]) chatMessages[chId] = [];
-  if (msgId && chatMessages[chId].find(m => m.id === msgId)) return;
+  if (msgId && chatMessages[chId].some(m => m.id === msgId)) return;
 
   chatMessages[chId].push({
     id: msgId || genId(),
@@ -2062,11 +2064,11 @@ function renderBoard() {
             <button class="btn btn-ghost btn-sm" onclick="hideAddForm('${list.id}')">Cancel</button>
           </div>
         </div>
-        <div class="add-card-btn" onclick="showAddForm('${list.id}')">+ Add a card</div>
+        <div class="add-card-btn" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="showAddForm('${list.id}')">+ Add a card</div>
       </div>
     `;
   }).join('') + `
-    <div class="add-list-btn" onclick="addList()">+ Add another list</div>
+    <div class="add-list-btn" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="addList()">+ Add another list</div>
   `;
 }
 
@@ -2413,14 +2415,15 @@ function switchAdapter(adapter) {
 
 function updateAdapterUI() {
   const isPg = currentAdapter === 'postgres';
+  const isMongo = !isPg;
 
   $('adapter-pg-btn').classList.toggle('active', isPg);
-  $('adapter-mongo-btn').classList.toggle('active', !isPg);
+  $('adapter-mongo-btn').classList.toggle('active', isMongo);
   $('pg-badge').style.display = isPg ? 'inline' : 'none';
-  $('mongo-badge').style.display = !isPg ? 'inline' : 'none';
+  $('mongo-badge').style.display = isMongo ? 'inline' : 'none';
 
   $('dbg-pg-btn').className = 'adapter-btn' + (isPg ? ' active-pg' : '');
-  $('dbg-mongo-btn').className = 'adapter-btn' + (!isPg ? ' active-mongo' : '');
+  $('dbg-mongo-btn').className = 'adapter-btn' + (isMongo ? ' active-mongo' : '');
   $('stat-adapter').textContent = isPg ? 'PG' : 'Mongo';
 }
 
@@ -2448,7 +2451,7 @@ function addDebugEvent(source, type, detail) {
   `;
 
   container.insertBefore(div, container.firstChild);
-  if (container.children.length > 200) container.removeChild(container.lastChild);
+  if (container.children.length > 200) container.lastChild.remove();
 }
 
 function clearDebugEvents() {
@@ -2486,7 +2489,7 @@ function initWhiteboard() {
       wbCurrentTool = btn.dataset.tool;
       document.querySelectorAll('#wb-toolbar .wb-tool[data-tool]').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      wbCanvas.style.cursor = wbCurrentTool === 'select' ? 'default' : wbCurrentTool === 'eraser' ? 'pointer' : 'crosshair';
+      wbCanvas.style.cursor = wbToolCursor(wbCurrentTool);
     });
   });
 
@@ -2507,7 +2510,7 @@ function wbSetColor(color) {
 function wbSetStroke(w) {
   wbStrokeWidth = w;
   document.querySelectorAll('.wb-stroke-btn').forEach(b => {
-    b.classList.toggle('active', parseInt(b.dataset.width) === w);
+    b.classList.toggle('active', Number.parseInt(b.dataset.width) === w);
   });
 }
 
@@ -2716,7 +2719,7 @@ function wbClear() {
 function handleWhiteboardEvent(eventType, payload) {
   if (payload.userId === currentUser.id) return;
   if (eventType === 'shape.added') {
-    if (!whiteboardShapes.find(s => s.id === payload.id)) {
+    if (!whiteboardShapes.some(s => s.id === payload.id)) {
       whiteboardShapes.push(payload);
       wbRedraw();
     }
@@ -2770,11 +2773,11 @@ function handleEditorEvent(eventType, payload) {
 
 function updateNotesStatus() {
   const el = $('notes-status');
-  if (!notesLastEditor) {
-    el.textContent = 'Ready';
-  } else {
+  if (notesLastEditor) {
     const ago = timeAgo(new Date(notesLastEditTime));
     el.textContent = `Edited by ${notesLastEditor} ${ago}`;
+  } else {
+    el.textContent = 'Ready';
   }
 }
 setInterval(updateNotesStatus, 5000);
@@ -2792,7 +2795,7 @@ function addStickyNote(remote) {
     userId: currentUser.id,
   };
 
-  if (!stickyNotes.find(n => n.id === note.id)) {
+  if (!stickyNotes.some(n => n.id === note.id)) {
     stickyNotes.push(note);
   }
 
@@ -2902,34 +2905,32 @@ document.addEventListener('mouseup', () => {
 });
 
 function handleStickyEvent(eventType, payload) {
-  if (eventType === 'sticky.created') {
-    if (payload.userId === currentUser.id) return;
-    addStickyNote(payload);
-  } else if (eventType === 'sticky.updated') {
-    const note = stickyNotes.find(n => n.id === payload.id);
-    if (note) {
+  const handlers = {
+    'sticky.created': () => {
+      if (payload.userId !== currentUser.id) addStickyNote(payload);
+    },
+    'sticky.updated': () => {
+      const note = stickyNotes.find(n => n.id === payload.id);
+      if (!note) return;
       note.text = payload.text;
       note.color = payload.color || note.color;
       renderStickyNotes();
-    }
-  } else if (eventType === 'sticky.moved') {
-    const note = stickyNotes.find(n => n.id === payload.id);
-    if (note) {
+    },
+    'sticky.moved': () => {
+      const note = stickyNotes.find(n => n.id === payload.id);
+      if (!note) return;
       note.x = payload.x;
       note.y = payload.y;
-      const container = $('sticky-container');
-      if (container) {
-        const el = container.querySelector(`[data-id="${payload.id}"]`);
-        if (el) {
-          el.style.left = payload.x + 'px';
-          el.style.top = payload.y + 'px';
-        }
-      }
-    }
-  } else if (eventType === 'sticky.deleted') {
-    stickyNotes = stickyNotes.filter(n => n.id !== payload.id);
-    renderStickyNotes();
-  }
+      const el = $('sticky-container')?.querySelector(`[data-id="${payload.id}"]`);
+      if (el) { el.style.left = payload.x + 'px'; el.style.top = payload.y + 'px'; }
+    },
+    'sticky.deleted': () => {
+      stickyNotes = stickyNotes.filter(n => n.id !== payload.id);
+      renderStickyNotes();
+    },
+  };
+  const handler = handlers[eventType];
+  if (handler) handler();
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -2940,7 +2941,7 @@ function createPollPrompt() {
   if (!question) return;
   const optionsStr = prompt('Options (comma separated):');
   if (!optionsStr) return;
-  const options = optionsStr.split(',').map(o => o.trim()).filter(o => o);
+  const options = optionsStr.split(',').map(o => o.trim()).filter(Boolean);
   if (options.length < 2) { alert('Need at least 2 options'); return; }
 
   const poll = {
@@ -2991,7 +2992,7 @@ function renderPolls() {
           const pct = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
           const voters = Object.values(opt.votes);
           return `
-            <div class="poll-option" onclick="votePoll('${poll.id}', '${opt.id}')">
+            <div class="poll-option" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \')this.click()" onclick="votePoll('${poll.id}', '${opt.id}')">
               <div class="poll-option-bar-wrap">
                 <div class="poll-option-bar ${count > 0 ? 'voted' : ''}" style="width:${pct}%"></div>
                 <span class="poll-option-label">${escHtml(opt.text)}</span>
@@ -3003,7 +3004,7 @@ function renderPolls() {
             </div>
           `;
         }).join('')}
-        <div class="poll-meta">${totalVotes} vote${totalVotes !== 1 ? 's' : ''} · Created by ${escHtml((USERS.find(u => u.id === poll.createdBy) || {}).username || '?')}</div>
+        <div class="poll-meta">${totalVotes} vote${totalVotes === 1 ? '' : 's'} · Created by ${escHtml((USERS.find(u => u.id === poll.createdBy) || {}).username || '?')}</div>
       </div>
     `;
   }).join('');
@@ -3012,7 +3013,7 @@ function renderPolls() {
 function handlePollEvent(eventType, payload) {
   if (eventType === 'poll.created') {
     if (payload.createdBy === currentUser.id) return;
-    if (!polls.find(p => p.id === payload.id)) {
+    if (!polls.some(p => p.id === payload.id)) {
       polls.push(payload);
       renderPolls();
     }
@@ -3073,7 +3074,7 @@ function timerStart() {
   timerStartTime = Date.now();
 
   if (timerMode === 'countdown' && timerElapsed === 0) {
-    const min = parseInt($('timer-countdown-min').value) || 5;
+    const min = Number.parseInt($('timer-countdown-min').value) || 5;
     timerCountdownTotal = min * 60 * 1000;
   }
 
@@ -3240,6 +3241,17 @@ function pixelPaint(idx) {
   }});
 }
 
+function pixelNeighbors(idx) {
+  const row = Math.floor(idx / 32);
+  const col = idx % 32;
+  const result = [];
+  if (col > 0) result.push(idx - 1);
+  if (col < 31) result.push(idx + 1);
+  if (row > 0) result.push(idx - 32);
+  if (row < 31) result.push(idx + 32);
+  return result;
+}
+
 function pixelFloodFill(startIdx, targetColor, fillColor) {
   if (targetColor === fillColor) return;
   const stack = [startIdx];
@@ -3248,8 +3260,7 @@ function pixelFloodFill(startIdx, targetColor, fillColor) {
 
   while (stack.length > 0) {
     const idx = stack.pop();
-    if (visited.has(idx)) continue;
-    if (idx < 0 || idx >= 32 * 32) continue;
+    if (visited.has(idx) || idx < 0 || idx >= 32 * 32) continue;
     if (pixelGrid[idx] !== targetColor) continue;
     visited.add(idx);
 
@@ -3257,12 +3268,7 @@ function pixelFloodFill(startIdx, targetColor, fillColor) {
     changes.push(idx);
     updatePixelCell(idx, currentUser.color);
 
-    const row = Math.floor(idx / 32);
-    const col = idx % 32;
-    if (col > 0) stack.push(idx - 1);
-    if (col < 31) stack.push(idx + 1);
-    if (row > 0) stack.push(idx - 32);
-    if (row < 31) stack.push(idx + 32);
+    for (const n of pixelNeighbors(idx)) stack.push(n);
   }
 
   if (changes.length > 0) {
@@ -3294,9 +3300,9 @@ function pixelClear() {
   pixelLastUsers = {};
   const grid = $('pixel-grid');
   if (grid) {
-    for (let i = 0; i < grid.children.length; i++) {
-      grid.children[i].style.background = '#1e293b';
-      const dot = grid.children[i].querySelector('.pixel-last-user');
+    for (const child of grid.children) {
+      child.style.background = '#1e293b';
+      const dot = child.querySelector('.pixel-last-user');
       if (dot) dot.remove();
     }
   }
@@ -3319,9 +3325,9 @@ function handlePixelEvent(eventType, payload) {
     pixelLastUsers = {};
     const grid = $('pixel-grid');
     if (grid) {
-      for (let i = 0; i < grid.children.length; i++) {
-        grid.children[i].style.background = '#1e293b';
-        const dot = grid.children[i].querySelector('.pixel-last-user');
+      for (const child of grid.children) {
+        child.style.background = '#1e293b';
+        const dot = child.querySelector('.pixel-last-user');
         if (dot) dot.remove();
       }
     }
@@ -3346,7 +3352,7 @@ async function checkHealth() {
     if (d.status === 'ok') {
       addDebugEvent('bus', 'health', 'ok');
     }
-  } catch(e) { /* ignore */ }
+  } catch(_ignored) { /* non-critical parse error */ }
 }
 setTimeout(checkHealth, 1000);
 
