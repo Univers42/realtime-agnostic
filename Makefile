@@ -1,17 +1,17 @@
 .PHONY: help build test up down logs clean seed status dev audit \
 	docker-login docker-build docker-push docker-update docker-tag docker-pull \
-	docker-release docker-build-release docker-push-release
+        docker-release docker-build-release docker-push-release \
+        docker-login-ghcr docker-ghcr-push
 
-.DEFAULT_GOAL := help
-
-# ─── Docker Hub config ────────────────────────────────────────────────────
 # Read credentials from .env (never commit secrets).
 -include .env
 export
 
 DOCKER_USER    ?= dlesieur
 DOCKER_REPO    ?= realtime-agnostic
+GITHUB_ORG     ?= Univers42
 IMAGE_NAME     := $(DOCKER_USER)/$(DOCKER_REPO)
+GHCR_IMAGE     := ghcr.io/$(shell echo $(GITHUB_ORG) | tr '[:upper:]' '[:lower:]')/$(DOCKER_REPO)
 # Version: use git tag if present, otherwise git short hash, fallback to "dev".
 VERSION        ?= $(shell git describe --tags --exact-match 2>/dev/null || \
                          git rev-parse --short HEAD 2>/dev/null || echo "dev")
@@ -126,8 +126,6 @@ test-ws: ## Quick WebSocket test (requires websocat)
 		timeout 3 websocat ws://localhost:4002/ws 2>/dev/null || \
 		echo "Install websocat: cargo install websocat"
 
-# ─── Docker Hub targets ───────────────────────────────────────────────────
-
 docker-login: ## Log in to Docker Hub using PAT from .env
 	@set -a; . ./.env; set +a; \
 	printf '%s' "$$PAT" | docker login -u "$$login_name" --password-stdin
@@ -173,6 +171,21 @@ endif
 
 docker-pull: ## Pull latest image from Docker Hub (useful in mini-baas)
 	docker pull $(IMAGE_NAME):latest
+
+docker-login-ghcr: ## Log in to GitHub Container Registry (needs GITHUB_TOKEN in .env)
+	@set -a; . ./.env; set +a; \
+	printf '%s' "$$GITHUB_TOKEN" | docker login ghcr.io -u "$$GITHUB_ACTOR" --password-stdin
+	@echo "Logged in to ghcr.io"
+
+docker-ghcr-push: ## Push image to GitHub Container Registry (also shows under repo Packages tab)
+	docker tag $(IMAGE_NAME):$(VERSION) $(GHCR_IMAGE):$(VERSION)
+	docker tag $(IMAGE_NAME):latest      $(GHCR_IMAGE):latest
+	docker push $(GHCR_IMAGE):$(VERSION)
+	docker push $(GHCR_IMAGE):latest
+	@echo ""
+	@echo "  Pushed: $(GHCR_IMAGE):$(VERSION)"
+	@echo "  Pushed: $(GHCR_IMAGE):latest"
+	@echo "  Packages: https://github.com/$(GITHUB_ORG)/$(DOCKER_REPO)/pkgs/container/$(DOCKER_REPO)"
 
 docker-build-release: ## Build Docker image tagged with the workspace version + latest
 	@echo "Building $(IMAGE_NAME):$(RELEASE_VERSION) ..."
