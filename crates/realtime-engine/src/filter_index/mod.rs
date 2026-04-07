@@ -103,6 +103,16 @@ impl FilterIndex {
         }
     }
 
+    /// Determine whether a filter expression can be exactly represented
+    /// by the bitmap (no post-filtering needed).
+    fn is_filter_exact(filter: &FilterExpr) -> bool {
+        match filter {
+            FilterExpr::Eq(_, _) | FilterExpr::In(_, _) => true,
+            FilterExpr::Or(l, r) => Self::is_filter_exact(l) && Self::is_filter_exact(r),
+            FilterExpr::And(_, _) | FilterExpr::Ne(_, _) | FilterExpr::Not(_) => false,
+        }
+    }
+
     /// Build a composite index key: `"pattern\0field\0value"`.
     fn make_index_key(pattern: &str, field: &str, value: &str) -> String {
         let mut key = String::with_capacity(pattern.len() + field.len() + value.len() + 2);
