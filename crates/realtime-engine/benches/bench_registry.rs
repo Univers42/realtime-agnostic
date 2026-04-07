@@ -13,7 +13,11 @@ use realtime_core::{
     ConnectionId, EventEnvelope, EventPayload, ServerMessage, SubConfig, Subscription,
     SubscriptionId, TopicPath, TopicPattern,
 };
-use realtime_engine::{registry::SubscriptionRegistry, router::EventRouter, SequenceGenerator};
+use realtime_engine::{
+    registry::SubscriptionRegistry,
+    router::EventRouter,
+    SequenceGenerator,
+};
 use smol_str::SmolStr;
 use tokio::sync::mpsc;
 
@@ -42,7 +46,7 @@ fn make_event(topic: &str, event_type: &str) -> EventEnvelope {
 fn eq_filter(field: &str, value: &str) -> FilterExpr {
     FilterExpr::Eq(
         FieldPath::new(field),
-        FilterValue::String(SmolStr::new(value)),
+        FilterValue::String(value.to_string()),
     )
 }
 

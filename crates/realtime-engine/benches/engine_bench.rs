@@ -19,7 +19,9 @@ use realtime_core::{
     ConnectionId, EventEnvelope, SubConfig, Subscription, SubscriptionId, TopicPath, TopicPattern,
 };
 use realtime_engine::{
-    registry::SubscriptionRegistry, router::EventRouter, FilterIndex, SequenceGenerator,
+    registry::SubscriptionRegistry,
+    router::EventRouter,
+    FilterIndex, SequenceGenerator,
 };
 use smol_str::SmolStr;
 use tokio::sync::mpsc;

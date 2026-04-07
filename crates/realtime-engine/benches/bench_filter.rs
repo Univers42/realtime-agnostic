@@ -39,7 +39,7 @@ fn make_event(topic: &str, event_type: &str) -> EventEnvelope {
 fn eq_filter(field: &str, value: &str) -> FilterExpr {
     FilterExpr::Eq(
         FieldPath::new(field),
-        FilterValue::String(SmolStr::new(value)),
+        FilterValue::String(value.to_string()),
     )
 }
 
@@ -48,7 +48,7 @@ fn in_filter(field: &str, values: &[&str]) -> FilterExpr {
         FieldPath::new(field),
         values
             .iter()
-            .map(|v| FilterValue::String(SmolStr::new(v)))
+            .map(|v| FilterValue::String((*v).to_string()))
             .collect(),
     )
 }
@@ -56,7 +56,7 @@ fn in_filter(field: &str, values: &[&str]) -> FilterExpr {
 fn ne_filter(field: &str, value: &str) -> FilterExpr {
     FilterExpr::Ne(
         FieldPath::new(field),
-        FilterValue::String(SmolStr::new(value)),
+        FilterValue::String(value.to_string()),
     )
 }
 
@@ -158,7 +158,7 @@ fn bench_filter_index(c: &mut Criterion) {
             let index = FilterIndex::new();
             for i in 0..n {
                 let sub = make_sub(i, &format!("s-{i}"), "broadcast", None);
-                index.add_subscription(&sub);
+                index.add_subscription(&sub, None);
             }
             let event = make_event("broadcast", "notify");
             b.iter(|| index.evaluate(black_box(&event)));
@@ -172,7 +172,7 @@ fn bench_filter_index(c: &mut Criterion) {
             for i in 0u64..n {
                 let f = eq_filter("event_type", if i % 2 == 0 { "created" } else { "updated" });
                 let sub = make_sub(i, &format!("s-{i}"), "orders/*", Some(f));
-                index.add_subscription(&sub);
+                index.add_subscription(&sub, None);
             }
             let event = make_event("orders/123", "created");
             b.iter(|| index.evaluate(black_box(&event)));
@@ -186,7 +186,7 @@ fn bench_filter_index(c: &mut Criterion) {
         b.iter(|| {
             let f = eq_filter("event_type", "created");
             let sub = make_sub(counter, &format!("s-{counter}"), "orders/*", Some(f));
-            index.add_subscription(black_box(&sub));
+            index.add_subscription(black_box(&sub), None);
             counter += 1;
         });
     });
@@ -198,7 +198,7 @@ fn bench_filter_index(c: &mut Criterion) {
                 let index = FilterIndex::new();
                 let f = eq_filter("event_type", "created");
                 let sub = make_sub(999_999, "s-rm", "orders/*", Some(f));
-                index.add_subscription(&sub);
+                index.add_subscription(&sub, None);
                 (index, sub)
             },
             |(index, sub)| index.remove_subscription(black_box(&sub)),
