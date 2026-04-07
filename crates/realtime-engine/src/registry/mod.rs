@@ -22,6 +22,7 @@ use realtime_core::{ConnectionId, Subscription, SubscriptionId, TopicPattern};
 use tracing::debug;
 
 use crate::filter_index::FilterIndex;
+use crate::FilterIndexLimits;
 
 /// Entry for a single subscription in the registry.
 ///
@@ -57,6 +58,18 @@ impl SubscriptionRegistry {
             by_sub_id: DashMap::new(),
             patterns: DashMap::new(),
             filter_index: Arc::new(FilterIndex::new()),
+        }
+    }
+
+    /// Create a new empty registry with custom [`FilterIndexLimits`].
+    #[must_use]
+    pub fn with_limits(limits: FilterIndexLimits) -> Self {
+        Self {
+            by_connection: DashMap::new(),
+            by_topic: DashMap::new(),
+            by_sub_id: DashMap::new(),
+            patterns: DashMap::new(),
+            filter_index: Arc::new(FilterIndex::with_limits(limits)),
         }
     }
 

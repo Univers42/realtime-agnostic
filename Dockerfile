@@ -68,6 +68,9 @@ WORKDIR /app
 
 COPY --from=builder /build/target/release/realtime-server /app/realtime-server
 
+# Default config file — override by mounting your own at this path.
+COPY realtime.toml /etc/realtime/realtime.toml
+
 # Default static files (can be overridden via volume mount at runtime).
 COPY sandbox/static/ /app/static/
 
@@ -76,8 +79,10 @@ USER realtime
 
 EXPOSE 4000
 
-# All config injected via environment variables — see docs/operations.md.
+# Config file + env-var overrides.  Mount a custom TOML at the same path
+# or set individual REALTIME_* env vars to override specific values.
 ENV RUST_LOG="info" \
+    REALTIME_CONFIG="/etc/realtime/realtime.toml" \
     REALTIME_HOST="0.0.0.0" \
     REALTIME_PORT="4000" \
     REALTIME_STATIC_DIR="/app/static"

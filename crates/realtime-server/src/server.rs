@@ -48,7 +48,13 @@ pub async fn run(config: ServerConfig) -> anyhow::Result<()> {
     let router = wire_router(&registry, &sequence_gen, dispatch_tx);
     spawn_bus_loop(&bus, &router).await?;
     start_producers(&config, &publisher);
-    let app = build_http_router(conn_manager, registry, auth_provider, publisher);
+    let app = build_http_router(
+        conn_manager,
+        registry,
+        auth_provider,
+        publisher,
+        &config.static_dir,
+    );
 
     let addr = format!("{}:{}", config.host, config.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
@@ -92,7 +98,9 @@ type CoreComponents = (
 );
 
 fn build_core(config: &ServerConfig) -> CoreComponents {
-    let registry = Arc::new(SubscriptionRegistry::new());
+    let registry = Arc::new(SubscriptionRegistry::with_limits(
+        config.engine.limits.clone(),
+    ));
     let sequence_gen = Arc::new(SequenceGenerator::new());
     let conn_mgr = Arc::new(ConnectionManager::new(
         config.performance.send_queue_capacity,
@@ -148,6 +156,7 @@ fn build_http_router(
     registry: Arc<SubscriptionRegistry>,
     auth_provider: Arc<dyn AuthProvider>,
     bus_publisher: Arc<dyn EventBusPublisher>,
+    static_dir: &str,
 ) -> Router {
     let state = AppState {
         conn_manager,
@@ -155,8 +164,6 @@ fn build_http_router(
         auth_provider,
         bus_publisher,
     };
-    let static_dir =
-        std::env::var("REALTIME_STATIC_DIR").unwrap_or_else(|_| "sandbox/static".into());
     Router::new()
         .route("/ws", get(ws_handler::ws_upgrade))
         .route("/v1/publish", post(rest_api::publish_event))

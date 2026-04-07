@@ -21,7 +21,7 @@ expect_used = "deny"
 panic       = "deny"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 license = "MIT"
 rust-version = "1.75"
@@ -76,6 +76,7 @@ smol_str = { version = "0.3", features = ["serde"] }
 thiserror = "2"
 anyhow = "1"
 config = "0.14"
+toml = "0.8"
 rand = "0.8"
 
 # Metrics

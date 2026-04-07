@@ -1,7 +1,11 @@
 //! Server configuration types.
 //!
-//! The configuration can be loaded from a JSON file (via `REALTIME_CONFIG`
-//! env var) or assembled from individual environment variables.
+//! The configuration can be loaded from a **TOML** file (recommended),
+//! a JSON file, or assembled from individual environment variables.
+//! Set the `REALTIME_CONFIG` env var to the path of the config file;
+//! the format is detected from the file extension (`.toml` or `.json`).
+//!
+//! Environment variables always override values from the config file.
 //!
 //! ## Defaults
 //!
@@ -9,6 +13,7 @@
 //! |---|---|
 //! | `host` | `0.0.0.0` |
 //! | `port` | `9090` |
+//! | `static_dir` | `sandbox/static` |
 //! | `event_bus` | in-process, 65 536 capacity |
 //! | `auth` | no-auth |
 //! | `send_queue_capacity` | 256 |
@@ -18,19 +23,21 @@
 mod auth;
 mod bus;
 mod database;
+mod engine;
 mod performance;
 
 pub use auth::AuthConfig;
 pub use bus::EventBusConfig;
 pub use database::{DatabaseConfig, LegacyDatabaseConfig};
+pub use engine::EngineConfig;
 pub use performance::PerformanceConfig;
 
 use serde::{Deserialize, Serialize};
 
 /// Top-level server configuration.
 ///
-/// Loaded from JSON or built programmatically. All sections have sensible
-/// defaults so an empty `{}` JSON file produces a working server.
+/// Loaded from TOML, JSON, or built programmatically. All sections have
+/// sensible defaults so an empty config file produces a working server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
     /// Server host address.
@@ -40,6 +47,10 @@ pub struct ServerConfig {
     /// Server port.
     #[serde(default = "default_port")]
     pub port: u16,
+
+    /// Directory to serve static files from.
+    #[serde(default = "default_static_dir")]
+    pub static_dir: String,
 
     /// Event bus configuration.
     #[serde(default)]
@@ -53,6 +64,10 @@ pub struct ServerConfig {
     #[serde(default)]
     pub performance: PerformanceConfig,
 
+    /// Engine-level configuration (filter index limits, etc.).
+    #[serde(default)]
+    pub engine: EngineConfig,
+
     /// Database producers.
     #[serde(default)]
     pub databases: Vec<DatabaseConfig>,
@@ -63,9 +78,11 @@ impl Default for ServerConfig {
         Self {
             host: default_host(),
             port: default_port(),
+            static_dir: default_static_dir(),
             event_bus: EventBusConfig::default(),
             auth: AuthConfig::default(),
             performance: PerformanceConfig::default(),
+            engine: EngineConfig::default(),
             databases: vec![],
         }
     }
@@ -77,4 +94,8 @@ fn default_host() -> String {
 
 const fn default_port() -> u16 {
     9090
+}
+
+fn default_static_dir() -> String {
+    "sandbox/static".to_string()
 }

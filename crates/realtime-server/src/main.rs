@@ -3,13 +3,21 @@
 //! Initialises tracing, loads [`ServerConfig`](realtime_server::config::ServerConfig)
 //! from environment / config file, and calls [`run()`](realtime_server::server::run).
 //!
+//! ## Configuration loading order
+//!
+//! 1. If `REALTIME_CONFIG` points to a **`.toml`** file → parse as TOML.
+//! 2. If `REALTIME_CONFIG` points to a **`.json`** file → parse as JSON.
+//! 3. Otherwise → build from individual env vars.
+//! 4. Environment variables always override values from the config file.
+//!
 //! ## Environment variables
 //!
 //! | Variable | Description |
 //! |---|---|
-//! | `REALTIME_CONFIG` | Path to a JSON config file |
+//! | `REALTIME_CONFIG` | Path to a TOML or JSON config file |
 //! | `REALTIME_HOST` | Bind address (default `0.0.0.0`) |
 //! | `REALTIME_PORT` | Bind port (default `9090`) |
+//! | `REALTIME_STATIC_DIR` | Static file directory |
 //! | `REALTIME_JWT_SECRET` | HMAC secret for JWT auth |
 //! | `REALTIME_PG_URL` | PostgreSQL connection string |
 //! | `REALTIME_MONGO_URI` | MongoDB connection URI |
@@ -38,15 +46,25 @@ async fn main() -> anyhow::Result<()> {
         config.performance.fanout_workers,
         config.performance.dispatch_channel_capacity,
     );
+    tracing::info!(
+        "Engine limits: max_patterns={}, max_subs_global={}, max_subs_per_conn={}",
+        config.engine.limits.max_patterns,
+        config.engine.limits.max_total_subscriptions,
+        config.engine.limits.max_subscriptions_per_connection,
+    );
 
     realtime_server::server::run(config).await
 }
 
 fn load_config() -> anyhow::Result<ServerConfig> {
-    if let Ok(path) = std::env::var("REALTIME_CONFIG") {
-        return load_config_from_file(&path);
-    }
-    let mut config = load_config_from_env()?;
+    let mut config = if let Ok(path) = std::env::var("REALTIME_CONFIG") {
+        load_config_from_file(&path)?
+    } else {
+        ServerConfig::default()
+    };
+
+    // Environment variables always override the file-based config.
+    apply_env_overrides(&mut config);
     add_pg_config(&mut config);
     add_mongo_config(&mut config);
     Ok(config)
@@ -54,17 +72,35 @@ fn load_config() -> anyhow::Result<ServerConfig> {
 
 fn load_config_from_file(path: &str) -> anyhow::Result<ServerConfig> {
     let content = std::fs::read_to_string(path)?;
-    let config: ServerConfig = serde_json::from_str(&content)?;
-    Ok(config)
+
+    let ext = std::path::Path::new(path)
+        .extension()
+        .and_then(std::ffi::OsStr::to_str)
+        .unwrap_or("");
+
+    if ext.eq_ignore_ascii_case("toml") || ext.eq_ignore_ascii_case("conf") {
+        tracing::info!("Loading TOML config from {}", path);
+        let config: ServerConfig = toml::from_str(&content)?;
+        Ok(config)
+    } else {
+        tracing::info!("Loading JSON config from {}", path);
+        let config: ServerConfig = serde_json::from_str(&content)?;
+        Ok(config)
+    }
 }
 
-fn load_config_from_env() -> anyhow::Result<ServerConfig> {
-    let mut config = ServerConfig::default();
+/// Apply individual `REALTIME_*` env vars on top of the loaded config.
+fn apply_env_overrides(config: &mut ServerConfig) {
     if let Ok(host) = std::env::var("REALTIME_HOST") {
         config.host = host;
     }
     if let Ok(port) = std::env::var("REALTIME_PORT") {
-        config.port = port.parse()?;
+        if let Ok(p) = port.parse() {
+            config.port = p;
+        }
+    }
+    if let Ok(dir) = std::env::var("REALTIME_STATIC_DIR") {
+        config.static_dir = dir;
     }
     if let Ok(secret) = std::env::var("REALTIME_JWT_SECRET") {
         config.auth = AuthConfig::Jwt {
@@ -73,7 +109,6 @@ fn load_config_from_env() -> anyhow::Result<ServerConfig> {
             audience: std::env::var("REALTIME_JWT_AUDIENCE").ok(),
         };
     }
-    Ok(config)
 }
 
 fn add_pg_config(config: &mut ServerConfig) {

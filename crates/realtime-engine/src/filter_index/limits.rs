@@ -12,7 +12,7 @@
 ///
 /// When a limit is hit, the offending `add_subscription` returns
 /// `Err(RealtimeError::CapacityExceeded { .. })`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FilterIndexLimits {
     /// Maximum number of unique topic patterns (default: 10 000).
     ///
