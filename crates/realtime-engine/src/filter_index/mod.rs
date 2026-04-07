@@ -17,19 +17,45 @@
 mod evaluate;
 mod mutate;
 
-use dashmap::DashMap;
-use realtime_core::TopicPattern;
+use std::borrow::Cow;
+use std::sync::{Mutex, RwLock};
+
+use dashmap::{DashMap, DashSet};
+use realtime_core::{
+    filter::{FilterExpr, FilterValue},
+    ConnectionId, NodeId, SubscriptionId, TopicPattern,
+};
 use roaring::RoaringBitmap;
+
+/// Pre-computed dispatch information for a single subscription.
+///
+/// Stored in the slab at the slot ID tracked by the bitmap, enabling
+/// O(1) lookup during event dispatch without any `DashMap` access.
+#[derive(Debug, Clone)]
+pub struct DispatchSlot {
+    /// Connection to dispatch to.
+    pub conn_id: ConnectionId,
+    /// Subscription identifier.
+    pub sub_id: SubscriptionId,
+    /// Gateway node for multi-node routing.
+    pub gateway_node: Option<NodeId>,
+    /// Topic pattern for this subscription.
+    pub topic: TopicPattern,
+    /// Optional filter expression (needed for post-filtering non-exact matches).
+    pub filter: Option<FilterExpr>,
+    /// Whether the bitmap result is exact (no post-filter needed).
+    ///
+    /// `true` for `None` (unfiltered), `Eq`, `In`, and pure `Or` trees.
+    /// `false` for `And`, `Ne`, `Not` (bitmap over-approximates).
+    pub bitmap_exact: bool,
+}
 
 /// Bitmap-based inverted index for efficient filter evaluation at scale.
 ///
-/// Maintains a three-level nested map:
-/// ```text
-/// topic_pattern → field_name → field_value → RoaringBitmap of conn_ids
-/// ```
-///
-/// Plus an `unfiltered` map for subscriptions with no filter (they match
-/// all events on their topic pattern).
+/// Uses flat composite keys (`"pattern\0field\0value"`) with slot-based
+/// dispatch for sub-linear event routing. The bitmap stores slot IDs that
+/// index directly into a `Vec<Option<DispatchSlot>>` slab, eliminating
+/// per-connection `DashMap` lookups from the hot path.
 pub struct FilterIndex {
     /// Filtered subscriptions: topic → field → value → bitmap.
     index: DashMap<String, DashMap<String, DashMap<String, RoaringBitmap>>>,
