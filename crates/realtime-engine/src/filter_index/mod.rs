@@ -67,6 +67,12 @@ pub struct FilterIndex {
     fields_by_pattern: DashMap<String, DashSet<String>>,
     /// Per-subscription tracked index keys for O(k) targeted removal.
     sub_keys: DashMap<(ConnectionId, SubscriptionId), Vec<String>>,
+    /// Dispatch slab: `slot_id` → dispatch info. `RwLock` for concurrent reads.
+    slots: RwLock<Vec<Option<DispatchSlot>>>,
+    /// Free slot IDs for reuse (avoids unbounded slab growth).
+    free_slots: Mutex<Vec<u32>>,
+    /// Reverse lookup: `(conn_id, sub_id)` → `slot_id` for O(1) removal.
+    slot_by_sub: DashMap<(ConnectionId, SubscriptionId), u32>,
 }
 
 impl FilterIndex {
@@ -77,6 +83,11 @@ impl FilterIndex {
             index: DashMap::new(),
             unfiltered: DashMap::new(),
             patterns: DashMap::new(),
+            fields_by_pattern: DashMap::new(),
+            sub_keys: DashMap::new(),
+            slots: RwLock::new(Vec::new()),
+            free_slots: Mutex::new(Vec::new()),
+            slot_by_sub: DashMap::new(),
         }
     }
 }
