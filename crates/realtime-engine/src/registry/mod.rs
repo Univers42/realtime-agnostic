@@ -11,6 +11,7 @@
 //! high-cardinality subscription sets using bitmaps.
 
 mod counters;
+mod guards;
 mod lookup;
 mod unsubscribe;
 
@@ -60,8 +61,30 @@ impl SubscriptionRegistry {
     }
 
     /// Register a new subscription, indexing it in all three maps.
+    ///
+    /// # Errors
+    ///
+    /// Returns `RealtimeError::CapacityExceeded` if the subscription
+    /// would exceed any configured limit (per-connection, global, pattern
+    /// cardinality, composite key budget, etc.).
     #[allow(clippy::needless_pass_by_value)]
-    pub fn subscribe(&self, sub: Subscription, gateway_node: Option<realtime_core::NodeId>) {
+    pub fn subscribe(
+        &self,
+        sub: Subscription,
+        gateway_node: Option<realtime_core::NodeId>,
+    ) -> realtime_core::Result<()> {
+        // ── Pre-flight guard checks ─────────────────────────────
+        let limits = self.filter_index.limits();
+        self.check_subscription_guards(
+            sub.conn_id,
+            limits.max_subscriptions_per_connection,
+            limits.max_total_subscriptions,
+        )?;
+
+        // ── Filter index insertion (enforces remaining limits) ──
+        self.filter_index.add_subscription(&sub, gateway_node)?;
+
+        // ── Index into the other maps ───────────────────────────
         let entry = SubscriptionEntry {
             subscription: sub.clone(),
             gateway_node,
@@ -80,11 +103,12 @@ impl SubscriptionRegistry {
             .or_insert_with(|| sub.topic.clone());
         self.by_sub_id
             .insert((sub.conn_id, sub.sub_id.0.to_string()), entry);
-        self.filter_index.add_subscription(&sub, gateway_node);
         debug!(
             conn_id = %sub.conn_id, sub_id = %sub.sub_id,
             topic = %sub.topic, "Subscription registered"
         );
+
+        Ok(())
     }
 }
 
@@ -95,6 +119,7 @@ impl Default for SubscriptionRegistry {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use bytes::Bytes;
@@ -122,7 +147,7 @@ mod tests {
     fn test_subscribe_and_lookup() {
         let registry = SubscriptionRegistry::new();
         let sub = make_sub(1, "sub-1", "orders/created", None);
-        registry.subscribe(sub, None);
+        registry.subscribe(sub, None).unwrap();
 
         let event = EventEnvelope::new(
             TopicPath::new("orders/created"),
@@ -138,7 +163,7 @@ mod tests {
     fn test_glob_pattern_matching() {
         let registry = SubscriptionRegistry::new();
         let sub = make_sub(1, "sub-1", "orders/*", None);
-        registry.subscribe(sub, None);
+        registry.subscribe(sub, None).unwrap();
 
         let event1 = EventEnvelope::new(
             TopicPath::new("orders/created"),
@@ -162,7 +187,7 @@ mod tests {
             realtime_core::filter::FilterValue::String("created".to_string()),
         );
         let sub = make_sub(1, "sub-1", "orders/*", Some(filter));
-        registry.subscribe(sub, None);
+        registry.subscribe(sub, None).unwrap();
 
         let event_match = EventEnvelope::new(
             TopicPath::new("orders/created"),
@@ -182,7 +207,7 @@ mod tests {
     fn test_unsubscribe() {
         let registry = SubscriptionRegistry::new();
         let sub = make_sub(1, "sub-1", "orders/created", None);
-        registry.subscribe(sub, None);
+        registry.subscribe(sub, None).unwrap();
         assert_eq!(registry.subscription_count(), 1);
         registry.unsubscribe(ConnectionId(1), "sub-1");
         assert_eq!(registry.subscription_count(), 0);
@@ -193,8 +218,8 @@ mod tests {
         let registry = SubscriptionRegistry::new();
         let sub1 = make_sub(1, "sub-1", "orders/created", None);
         let sub2 = make_sub(1, "sub-2", "users/updated", None);
-        registry.subscribe(sub1, None);
-        registry.subscribe(sub2, None);
+        registry.subscribe(sub1, None).unwrap();
+        registry.subscribe(sub2, None).unwrap();
         assert_eq!(registry.subscription_count(), 2);
         registry.remove_connection(ConnectionId(1));
         assert_eq!(registry.subscription_count(), 0);
@@ -206,11 +231,54 @@ mod tests {
         let registry = SubscriptionRegistry::new();
         for i in 0..100 {
             let sub = make_sub(i, &format!("sub-{i}"), "broadcast", None);
-            registry.subscribe(sub, None);
+            registry.subscribe(sub, None).unwrap();
         }
 
         let event = EventEnvelope::new(TopicPath::new("broadcast"), "notify", Bytes::from("{}"));
         let matches = registry.lookup_matches(&event);
         assert_eq!(matches.len(), 100);
+    }
+
+    #[test]
+    fn test_per_connection_subscription_limit() {
+        // Default limit is 200 — use a smaller one for testing.
+        let registry = SubscriptionRegistry::new();
+        // Default max_subscriptions_per_connection = 200, so 201 should fail.
+        for i in 0..200 {
+            let sub = make_sub(1, &format!("sub-{i}"), &format!("topic/{i}"), None);
+            registry.subscribe(sub, None).unwrap();
+        }
+        let sub = make_sub(1, "sub-200", "topic/200", None);
+        let err = registry.subscribe(sub, None).unwrap_err();
+        assert!(
+            err.to_string().contains("already has 200 subscriptions"),
+            "Expected per-connection limit error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_filter_index_stats_exposed() {
+        let registry = SubscriptionRegistry::new();
+        let sub = make_sub(1, "sub-1", "orders/created", None);
+        registry.subscribe(sub, None).unwrap();
+
+        let snap = registry.filter_index_snapshot();
+        assert_eq!(snap.slots_active, 1);
+        assert_eq!(snap.slots_allocated, 1);
+    }
+
+    #[test]
+    fn test_pattern_count_exposed() {
+        let registry = SubscriptionRegistry::new();
+        registry
+            .subscribe(make_sub(1, "s1", "topic/a", None), None)
+            .unwrap();
+        registry
+            .subscribe(make_sub(2, "s2", "topic/b", None), None)
+            .unwrap();
+        registry
+            .subscribe(make_sub(3, "s3", "topic/a", None), None)
+            .unwrap();
+        assert_eq!(registry.pattern_count(), 2);
     }
 }
