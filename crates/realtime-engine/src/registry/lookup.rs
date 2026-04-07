@@ -1,19 +1,23 @@
 //! Lookup operations — the hot path queried on every incoming event.
 
-use realtime_core::{ConnectionId, EventEnvelope, SubscriptionId};
+use realtime_core::{ConnectionId, EventEnvelope, NodeId, SubscriptionId};
 
 use super::{SubscriptionEntry, SubscriptionRegistry};
 
 impl SubscriptionRegistry {
-    /// Look up all matching connections for an event, applying server-side filters.
+    /// Look up all matching connections for an event via the linear path.
     ///
-    /// This is the **hot path** of the engine. For each registered topic
-    /// pattern that matches, every subscription is checked against its filter.
+    /// Iterates all subscriptions per matching topic pattern. For
+    /// high-cardinality scenarios, prefer [`for_each_match()`] which
+    /// uses the slot-based bitmap index.
     pub fn lookup_matches(
         &self,
         event: &EventEnvelope,
-    ) -> Vec<(ConnectionId, SubscriptionId, Option<realtime_core::NodeId>)> {
+    ) -> Vec<(ConnectionId, SubscriptionId, Option<NodeId>)> {
         let mut matches = Vec::new();
+        // Pre-parse payload JSON once for all filter evaluations.
+        let parsed: Option<serde_json::Value> = serde_json::from_slice(&event.payload).ok();
+
         for pref in &self.patterns {
             if !pref.value().matches(&event.topic) {
                 continue;
@@ -28,7 +32,11 @@ impl SubscriptionRegistry {
                 };
                 if let Some(ref f) = entry.subscription.filter {
                     let getter = |fld: &realtime_core::filter::FieldPath| {
-                        realtime_core::filter::envelope_field_getter(event, fld)
+                        realtime_core::filter::envelope_field_getter_cached(
+                            event,
+                            fld,
+                            parsed.as_ref(),
+                        )
                     };
                     if !f.evaluate(&getter) {
                         continue;
@@ -40,29 +48,33 @@ impl SubscriptionRegistry {
         matches
     }
 
-    /// Optimized lookup using the bitmap filter index.
+    /// Optimized lookup using the bitmap index with slot-based dispatch.
     ///
-    /// For high-cardinality scenarios (10k+ subscriptions), the bitmap
-    /// approach can be faster than iterating all subscriptions.
+    /// Returns a `Vec` of matching `(conn_id, sub_id, gateway_node)` tuples.
+    /// Internally uses [`for_each_match()`] for O(1)-per-slot dispatch.
     pub fn lookup_matches_bitmap(
         &self,
         event: &EventEnvelope,
-    ) -> Vec<(ConnectionId, SubscriptionId, Option<realtime_core::NodeId>)> {
-        let bitmap = self.filter_index.evaluate(event);
+    ) -> Vec<(ConnectionId, SubscriptionId, Option<NodeId>)> {
         let mut matches = Vec::new();
-        for raw in &bitmap {
-            let conn_id = ConnectionId(u64::from(raw));
-            let Some(subs) = self.by_connection.get(&conn_id) else {
-                continue;
-            };
-            for entry in subs.iter() {
-                if entry.subscription.topic.matches(&event.topic) {
-                    let sub_id = entry.subscription.sub_id.clone();
-                    matches.push((conn_id, sub_id, entry.gateway_node));
-                }
-            }
-        }
+        self.for_each_match(event, |conn_id, sub_id, node| {
+            matches.push((conn_id, sub_id.clone(), node));
+        });
         matches
+    }
+
+    /// Invoke `callback` for each subscription matching `event`.
+    ///
+    /// Uses the bitmap filter index with slot-based dispatch for sub-linear
+    /// scaling. `bitmap_exact` slots are dispatched immediately; non-exact
+    /// slots are post-filtered with the full `FilterExpr`.
+    ///
+    /// Returns the number of matches.
+    pub fn for_each_match<F>(&self, event: &EventEnvelope, callback: F) -> usize
+    where
+        F: FnMut(ConnectionId, &SubscriptionId, Option<NodeId>),
+    {
+        self.filter_index.for_each_match(event, callback)
     }
 
     /// Return a clone of all subscriptions for a given connection.
