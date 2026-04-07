@@ -80,7 +80,7 @@ impl SubscriptionRegistry {
             .or_insert_with(|| sub.topic.clone());
         self.by_sub_id
             .insert((sub.conn_id, sub.sub_id.0.to_string()), entry);
-        self.filter_index.add_subscription(&sub);
+        self.filter_index.add_subscription(&sub, gateway_node);
         debug!(
             conn_id = %sub.conn_id, sub_id = %sub.sub_id,
             topic = %sub.topic, "Subscription registered"
