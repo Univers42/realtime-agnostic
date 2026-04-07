@@ -2,6 +2,7 @@
 //!
 //! Run with: `cargo bench -p realtime-engine --bench bench_registry`
 #![allow(clippy::expect_used)]
+#![allow(clippy::unwrap_used)]
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -65,7 +66,7 @@ fn bench_registry_lookup(c: &mut Criterion) {
             let registry = SubscriptionRegistry::new();
             for i in 0..n {
                 let sub = make_sub(i, &format!("s-{i}"), "broadcast", None);
-                registry.subscribe(sub, None);
+                registry.subscribe(sub, None).unwrap();
             }
             let event = make_event("broadcast", "notify");
             b.iter(|| registry.lookup_matches(black_box(&event)));
@@ -78,7 +79,7 @@ fn bench_registry_lookup(c: &mut Criterion) {
             let registry = SubscriptionRegistry::new();
             for i in 0..n {
                 let sub = make_sub(i, &format!("s-{i}"), "broadcast", None);
-                registry.subscribe(sub, None);
+                registry.subscribe(sub, None).unwrap();
             }
             let event = make_event("broadcast", "notify");
             b.iter(|| registry.lookup_matches_bitmap(black_box(&event)));
@@ -92,7 +93,7 @@ fn bench_registry_lookup(c: &mut Criterion) {
             for i in 0..n {
                 let f = eq_filter("event_type", if i % 2 == 0 { "created" } else { "updated" });
                 let sub = make_sub(i, &format!("s-{i}"), "orders/*", Some(f));
-                registry.subscribe(sub, None);
+                registry.subscribe(sub, None).unwrap();
             }
             let event = make_event("orders/123", "created");
             b.iter(|| registry.lookup_matches_bitmap(black_box(&event)));
@@ -105,7 +106,7 @@ fn bench_registry_lookup(c: &mut Criterion) {
         let mut counter = 0u64;
         b.iter(|| {
             let sub = make_sub(counter, &format!("s-{counter}"), "orders/*", None);
-            registry.subscribe(black_box(sub), None);
+            registry.subscribe(black_box(sub), None).unwrap();
             counter += 1;
         });
     });
@@ -116,7 +117,7 @@ fn bench_registry_lookup(c: &mut Criterion) {
             || {
                 let registry = SubscriptionRegistry::new();
                 let sub = make_sub(999_999, "s-rm", "orders/*", None);
-                registry.subscribe(sub, None);
+                registry.subscribe(sub, None).unwrap();
                 registry
             },
             |registry| registry.unsubscribe(black_box(ConnectionId(999_999)), "s-rm"),
@@ -131,7 +132,7 @@ fn bench_registry_lookup(c: &mut Criterion) {
                 let registry = SubscriptionRegistry::new();
                 for i in 0..100u64 {
                     let sub = make_sub(42, &format!("s-{i}"), &format!("topic/{i}"), None);
-                    registry.subscribe(sub, None);
+                    registry.subscribe(sub, None).unwrap();
                 }
                 registry
             },
@@ -160,7 +161,7 @@ fn bench_router(c: &mut Criterion) {
             let router = EventRouter::new(Arc::clone(&registry), seq_gen, dispatch_tx);
             for i in 0..n {
                 let sub = make_sub(i, &format!("s-{i}"), "broadcast", None);
-                registry.subscribe(sub, None);
+                registry.subscribe(sub, None).unwrap();
             }
             b.iter(|| {
                 let event = make_event("broadcast", "notify");
@@ -183,7 +184,7 @@ fn bench_router(c: &mut Criterion) {
                     let f =
                         eq_filter("event_type", if i % 2 == 0 { "created" } else { "updated" });
                     let sub = make_sub(i, &format!("s-{i}"), "orders/*", Some(f));
-                    registry.subscribe(sub, None);
+                    registry.subscribe(sub, None).unwrap();
                 }
                 b.iter(|| {
                     let event = make_event("orders/123", "created");

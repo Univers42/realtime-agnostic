@@ -2,6 +2,7 @@
 //!
 //! Run with: `cargo bench -p realtime-engine --bench bench_filter`
 #![allow(clippy::expect_used)]
+#![allow(clippy::unwrap_used)]
 
 use std::time::Duration;
 
@@ -158,7 +159,7 @@ fn bench_filter_index(c: &mut Criterion) {
             let index = FilterIndex::new();
             for i in 0..n {
                 let sub = make_sub(i, &format!("s-{i}"), "broadcast", None);
-                index.add_subscription(&sub, None);
+                index.add_subscription(&sub, None).unwrap();
             }
             let event = make_event("broadcast", "notify");
             b.iter(|| index.evaluate(black_box(&event)));
@@ -172,7 +173,7 @@ fn bench_filter_index(c: &mut Criterion) {
             for i in 0u64..n {
                 let f = eq_filter("event_type", if i % 2 == 0 { "created" } else { "updated" });
                 let sub = make_sub(i, &format!("s-{i}"), "orders/*", Some(f));
-                index.add_subscription(&sub, None);
+                index.add_subscription(&sub, None).unwrap();
             }
             let event = make_event("orders/123", "created");
             b.iter(|| index.evaluate(black_box(&event)));
@@ -186,7 +187,7 @@ fn bench_filter_index(c: &mut Criterion) {
         b.iter(|| {
             let f = eq_filter("event_type", "created");
             let sub = make_sub(counter, &format!("s-{counter}"), "orders/*", Some(f));
-            index.add_subscription(black_box(&sub), None);
+            index.add_subscription(black_box(&sub), None).unwrap();
             counter += 1;
         });
     });
@@ -198,7 +199,7 @@ fn bench_filter_index(c: &mut Criterion) {
                 let index = FilterIndex::new();
                 let f = eq_filter("event_type", "created");
                 let sub = make_sub(999_999, "s-rm", "orders/*", Some(f));
-                index.add_subscription(&sub, None);
+                index.add_subscription(&sub, None).unwrap();
                 (index, sub)
             },
             |(index, sub)| index.remove_subscription(black_box(&sub)),
