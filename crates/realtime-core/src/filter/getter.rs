@@ -70,3 +70,51 @@ fn json_value_to_filter_value(v: &serde_json::Value) -> Option<FilterValue> {
         _ => None,
     }
 }
+
+/// Extract a field value using a **pre-parsed** JSON payload.
+///
+/// Avoids re-parsing `event.payload` on every call — critical when
+/// evaluating multiple fields against the same event in the bitmap
+/// lookup path.
+///
+/// If `parsed_payload` is `None` (e.g. the payload is not valid JSON),
+/// payload field lookups return `None` while envelope-level fields
+/// still work.
+pub fn envelope_field_getter_cached(
+    event: &crate::types::EventEnvelope,
+    field: &FieldPath,
+    parsed_payload: Option<&serde_json::Value>,
+) -> Option<FilterValue> {
+    match field.0.as_str() {
+        "event_type" => Some(FilterValue::String(event.event_type.clone())),
+        "topic" => Some(FilterValue::String(event.topic.as_str().to_string())),
+        "source.kind" => event
+            .source
+            .as_ref()
+            .map(|s| FilterValue::String(format!("{:?}", s.kind))),
+        "source.id" => event
+            .source
+            .as_ref()
+            .map(|s| FilterValue::String(s.id.clone())),
+        s if s.starts_with("source.metadata.") => {
+            extract_source_metadata(event, &s["source.metadata.".len()..])
+        }
+        s if s.starts_with("payload.") => {
+            extract_payload_field_cached(parsed_payload, &s["payload.".len()..])
+        }
+        bare => extract_payload_field_cached(parsed_payload, bare),
+    }
+}
+
+/// Extract a field from a pre-parsed JSON value (zero re-parse cost).
+fn extract_payload_field_cached(
+    parsed: Option<&serde_json::Value>,
+    path: &str,
+) -> Option<FilterValue> {
+    let root = parsed?;
+    let mut current = root;
+    for segment in path.split('.') {
+        current = current.get(segment)?;
+    }
+    json_value_to_filter_value(current)
+}
