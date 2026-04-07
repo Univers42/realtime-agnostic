@@ -57,9 +57,9 @@ pub struct DispatchSlot {
 /// index directly into a `Vec<Option<DispatchSlot>>` slab, eliminating
 /// per-connection `DashMap` lookups from the hot path.
 pub struct FilterIndex {
-    /// Filtered subscriptions: topic → field → value → bitmap.
-    index: DashMap<String, DashMap<String, DashMap<String, RoaringBitmap>>>,
-    /// Unfiltered subscriptions (no filter = wildcard match).
+    /// Flat inverted index: `"pattern\0field\0value"` → bitmap of slot IDs.
+    index: DashMap<String, RoaringBitmap>,
+    /// Unfiltered subscriptions (no filter / non-indexable filters).
     unfiltered: DashMap<String, RoaringBitmap>,
     /// All registered patterns for matching incoming events.
     patterns: DashMap<String, TopicPattern>,
