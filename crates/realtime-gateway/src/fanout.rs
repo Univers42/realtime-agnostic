@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use realtime_engine::router::LocalDispatch;
+use realtime_engine::router::{DispatchMessage, LocalDispatch};
 use tokio::sync::mpsc;
 use tracing::{debug, warn};
 
@@ -28,8 +28,8 @@ impl FanOutWorkerPool {
     }
 
     #[must_use]
-    pub fn start(&self) -> mpsc::Sender<LocalDispatch> {
-        let (tx, rx) = mpsc::channel::<LocalDispatch>(65536);
+    pub fn start(&self) -> mpsc::Sender<DispatchMessage> {
+        let (tx, rx) = mpsc::channel::<DispatchMessage>(65536);
         let shared_rx = Arc::new(tokio::sync::Mutex::new(rx));
         for worker_id in 0..self.worker_count {
             let cm = Arc::clone(&self.conn_manager);
@@ -42,19 +42,32 @@ impl FanOutWorkerPool {
 
 async fn run_worker(
     worker_id: usize,
-    rx: Arc<tokio::sync::Mutex<mpsc::Receiver<LocalDispatch>>>,
+    rx: Arc<tokio::sync::Mutex<mpsc::Receiver<DispatchMessage>>>,
     conn_manager: Arc<ConnectionManager>,
 ) {
     loop {
-        let dispatch = {
+        let message = {
             let mut guard = rx.lock().await;
             guard.recv().await
         };
-        if let Some(d) = dispatch {
-            handle_dispatch(worker_id, d, &conn_manager)
-        } else {
-            debug!(worker = worker_id, "Fan-out worker exiting");
-            break;
+        match message {
+            Some(DispatchMessage::Single(d)) => {
+                handle_dispatch(worker_id, d, &conn_manager);
+            }
+            Some(DispatchMessage::Batch { event, targets }) => {
+                for (conn_id, sub_id) in targets {
+                    let d = LocalDispatch {
+                        conn_id,
+                        sub_id,
+                        event: std::sync::Arc::clone(&event),
+                    };
+                    handle_dispatch(worker_id, d, &conn_manager);
+                }
+            }
+            None => {
+                debug!(worker = worker_id, "Fan-out worker exiting");
+                break;
+            }
         }
     }
 }
@@ -108,11 +121,11 @@ mod tests {
         ));
 
         dispatch_tx
-            .send(LocalDispatch {
+            .send(DispatchMessage::Single(LocalDispatch {
                 conn_id,
                 sub_id: SubscriptionId(SmolStr::new("sub-1")),
                 event,
-            })
+            }))
             .await
             .unwrap();
 
