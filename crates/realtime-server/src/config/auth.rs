@@ -6,10 +6,11 @@ use serde::{Deserialize, Serialize};
 ///
 /// - `NoAuth` — accepts all tokens (development only).
 /// - `Jwt` — validates HMAC-SHA256 / RSA tokens.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum AuthConfig {
     #[serde(rename = "none")]
+    #[default]
     NoAuth,
     #[serde(rename = "jwt")]
     Jwt {
@@ -19,10 +20,4 @@ pub enum AuthConfig {
         #[serde(default)]
         audience: Option<String>,
     },
-}
-
-impl Default for AuthConfig {
-    fn default() -> Self {
-        Self::NoAuth
-    }
 }
