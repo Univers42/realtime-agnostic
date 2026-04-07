@@ -36,11 +36,11 @@ pub enum FilterExpr {
     /// Field is one of several values.
     In(FieldPath, Vec<FilterValue>),
     /// Both sub-expressions must be true.
-    And(Box<FilterExpr>, Box<FilterExpr>),
+    And(Box<Self>, Box<Self>),
     /// At least one sub-expression must be true.
-    Or(Box<FilterExpr>, Box<FilterExpr>),
+    Or(Box<Self>, Box<Self>),
     /// Inverts the inner expression.
-    Not(Box<FilterExpr>),
+    Not(Box<Self>),
 }
 
 /// A dot-separated path identifying a field on the

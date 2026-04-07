@@ -6,20 +6,15 @@ use super::TopicPattern;
 ///
 /// # Purpose
 /// Controls backpressure when a client reads too slowly.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum OverflowPolicy {
     /// Drop the oldest queued event.
     DropOldest,
     /// Drop the incoming event (default).
+    #[default]
     DropNewest,
     /// Force-disconnect the slow client.
     Disconnect,
-}
-
-impl Default for OverflowPolicy {
-    fn default() -> Self {
-        Self::DropNewest
-    }
 }
 
 /// Per-subscription configuration sent at subscribe time.

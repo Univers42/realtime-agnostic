@@ -5,10 +5,11 @@ use std::collections::HashMap;
 ///
 /// # Purpose
 /// Serializes as MIME strings for interoperability. JSON is the default.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum PayloadEncoding {
     /// JSON payload (`application/json`).
     #[serde(rename = "application/json")]
+    #[default]
     Json,
     /// `MessagePack` payload (`application/msgpack`).
     #[serde(rename = "application/msgpack")]
@@ -16,12 +17,6 @@ pub enum PayloadEncoding {
     /// Opaque binary payload (`application/octet-stream`).
     #[serde(rename = "application/octet-stream")]
     Binary,
-}
-
-impl Default for PayloadEncoding {
-    fn default() -> Self {
-        Self::Json
-    }
 }
 
 /// Classification of where an event originated.

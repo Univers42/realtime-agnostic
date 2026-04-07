@@ -21,16 +21,11 @@ pub struct DispatchBatch {
 /// # Purpose
 /// Currently only JSON is used; `MsgPack` is reserved for future
 /// binary-optimised transports.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FrameEncoding {
     /// JSON text frames (current default).
+    #[default]
     Json,
     /// `MessagePack` binary frames (reserved).
     MsgPack,
-}
-
-impl Default for FrameEncoding {
-    fn default() -> Self {
-        Self::Json
-    }
 }
