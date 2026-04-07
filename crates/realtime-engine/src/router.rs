@@ -85,30 +85,33 @@ impl EventRouter {
     /// Route a single event to all matching subscribers.
     ///
     /// Assigns a sequence number, wraps in `Arc` for zero-copy fan-out,
-    /// queries the registry, and dispatches a [`LocalDispatch`] per match.
+    /// queries the registry via slot-based bitmap dispatch, and sends a
+    /// [`LocalDispatch`] per match into the dispatch channel.
     pub fn route_event(&self, mut event: EventEnvelope) -> usize {
         event.sequence = self.sequence_gen.next(event.topic.as_str());
         let event = Arc::new(event);
-        let matches = self.registry.lookup_matches(&event);
-        if matches.is_empty() {
-            debug!(topic = %event.topic, "No matching subscriptions for event");
-            return 0;
-        }
-        debug!(
-            topic = %event.topic, event_id = %event.event_id,
-            match_count = matches.len(), "Routing event to subscribers"
-        );
-        for (conn_id, sub_id, _node) in &matches {
+        let dispatch_tx = &self.dispatch_tx;
+        let mut count = 0usize;
+        self.registry.for_each_match(&event, |conn_id, sub_id, _node| {
             let dispatch = LocalDispatch {
-                conn_id: *conn_id,
+                conn_id,
                 sub_id: sub_id.clone(),
                 event: Arc::clone(&event),
             };
-            if let Err(e) = self.dispatch_tx.try_send(dispatch) {
+            if let Err(e) = dispatch_tx.try_send(dispatch) {
                 warn!(conn_id = %conn_id, "Dispatch channel full or closed: {}", e);
             }
+            count += 1;
+        });
+        if count == 0 {
+            debug!(topic = %event.topic, "No matching subscriptions for event");
+        } else {
+            debug!(
+                topic = %event.topic, event_id = %event.event_id,
+                match_count = count, "Routing event to subscribers"
+            );
         }
-        matches.len()
+        count
     }
 
     /// Start the router loop, consuming events from a bus subscriber.
@@ -122,11 +125,12 @@ impl EventRouter {
         info!("Event router started");
 
         while let Some(event) = subscriber.next_event().await {
-            let _routed = self.route_event(event.clone());
+            let event_id = event.event_id.clone();
+            let _routed = self.route_event(event);
 
             // Ack the event on the bus
-            if let Err(e) = subscriber.ack(&event.event_id).await {
-                error!("Failed to ack event {}: {}", event.event_id, e);
+            if let Err(e) = subscriber.ack(&event_id).await {
+                error!("Failed to ack event {}: {}", event_id, e);
             }
         }
 
