@@ -103,7 +103,7 @@ fn build_core(config: &ServerConfig) -> CoreComponents {
 fn build_fanout(
     conn_manager: &Arc<ConnectionManager>,
     workers: usize,
-) -> mpsc::Sender<realtime_engine::router::LocalDispatch> {
+) -> mpsc::Sender<realtime_engine::router::DispatchMessage> {
     let pool = FanOutWorkerPool::new(Arc::clone(conn_manager), workers);
     pool.start()
 }
@@ -111,7 +111,7 @@ fn build_fanout(
 fn wire_router(
     registry: &Arc<SubscriptionRegistry>,
     seq_gen: &Arc<SequenceGenerator>,
-    dispatch_tx: mpsc::Sender<realtime_engine::router::LocalDispatch>,
+    dispatch_tx: mpsc::Sender<realtime_engine::router::DispatchMessage>,
 ) -> Arc<EventRouter> {
     Arc::new(EventRouter::new(
         Arc::clone(registry),
