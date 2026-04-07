@@ -6,7 +6,7 @@
 /*   By: dlesieur <dlesieur@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/07 11:13:02 by dlesieur          #+#    #+#             */
-/*   Updated: 2026/04/07 11:13:03 by dlesieur         ###   ########.fr       */
+/*   Updated: 2026/04/07 23:40:36 by dlesieur         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -44,7 +44,9 @@ pub mod router;
 pub mod sequence;
 
 pub use filter_index::{DispatchSlot, FilterIndex};
+pub use filter_index::limits::FilterIndexLimits;
+pub use filter_index::stats::StatsSnapshot;
 pub use producer_registry::ProducerRegistry;
 pub use registry::SubscriptionRegistry;
-pub use router::EventRouter;
+pub use router::{DispatchStatsSnapshot, EventRouter};
 pub use sequence::SequenceGenerator;
