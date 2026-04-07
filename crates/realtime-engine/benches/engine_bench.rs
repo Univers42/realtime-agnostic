@@ -49,7 +49,7 @@ fn make_event(topic: &str, event_type: &str) -> EventEnvelope {
 fn eq_filter(field: &str, value: &str) -> FilterExpr {
     FilterExpr::Eq(
         FieldPath::new(field),
-        FilterValue::String(SmolStr::new(value)),
+        FilterValue::String(value.to_string()),
     )
 }
 
@@ -58,7 +58,7 @@ fn in_filter(field: &str, values: &[&str]) -> FilterExpr {
         FieldPath::new(field),
         values
             .iter()
-            .map(|v| FilterValue::String(SmolStr::new(v)))
+            .map(|v| FilterValue::String((*v).to_string()))
             .collect(),
     )
 }
@@ -66,7 +66,7 @@ fn in_filter(field: &str, values: &[&str]) -> FilterExpr {
 fn ne_filter(field: &str, value: &str) -> FilterExpr {
     FilterExpr::Ne(
         FieldPath::new(field),
-        FilterValue::String(SmolStr::new(value)),
+        FilterValue::String(value.to_string()),
     )
 }
 
