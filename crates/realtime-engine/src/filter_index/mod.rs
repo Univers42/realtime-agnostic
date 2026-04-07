@@ -90,6 +90,16 @@ impl FilterIndex {
             slot_by_sub: DashMap::new(),
         }
     }
+    /// Build a composite index key: `"pattern\0field\0value"`.
+    fn make_index_key(pattern: &str, field: &str, value: &str) -> String {
+        let mut key = String::with_capacity(pattern.len() + field.len() + value.len() + 2);
+        key.push_str(pattern);
+        key.push('\0');
+        key.push_str(field);
+        key.push('\0');
+        key.push_str(value);
+        key
+    }
 }
 
 impl Default for FilterIndex {
