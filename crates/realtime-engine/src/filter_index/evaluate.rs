@@ -4,6 +4,19 @@
 //! combines evaluation with dispatch, invoking a callback for each matching
 //! slot using the pre-computed [`DispatchSlot`] info. JSON payload is parsed
 //! once and shared between bitmap evaluation and any post-filter checks.
+//!
+//! ## Circuit breaker
+//!
+//! When evaluation latency exceeds `evaluation_slow_threshold_us` for
+//! `circuit_breaker_trip_count` consecutive evaluations, the circuit opens.
+//! While open, **only unfiltered subscriptions** are matched (the cheapest
+//! bitmap union). This provides graceful degradation instead of dropping
+//! events entirely. The circuit re-closes automatically after a cooldown
+//! period when a probe evaluation completes in time.
+
+#![allow(clippy::cast_possible_truncation)] // Intentional: µs values never overflow u64, bitmap len fits usize.
+
+use std::time::Instant;
 
 use realtime_core::{
     filter::{envelope_field_getter_cached, FieldPath},
@@ -15,14 +28,50 @@ use super::FilterIndex;
 
 impl FilterIndex {
     /// Evaluate all filters against an event, returning a bitmap of slot IDs.
+    ///
+    /// Integrates with the circuit breaker: when the circuit is open, only
+    /// unfiltered subscriptions are returned (fast degraded path). Evaluation
+    /// duration and match count are recorded in [`FilterIndexStats`].
     pub fn evaluate(&self, event: &EventEnvelope) -> RoaringBitmap {
-        // Lazy parse: skip JSON deserialization when no fields are indexed.
+        let start = Instant::now();
+
+        // Circuit breaker: if open, return unfiltered-only (cheapest path).
+        if self.circuit_breaker.is_open() {
+            let result = self.evaluate_unfiltered_only(event);
+            let us = start.elapsed().as_micros() as u64;
+            self.stats.circuit_bypassed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            self.stats.record_evaluation(us, result.len());
+            self.circuit_breaker.report(us, &self.stats);
+            return result;
+        }
+
+        // Normal path.
         let parsed: Option<serde_json::Value> = if self.fields_by_pattern.is_empty() {
             None
         } else {
             serde_json::from_slice(&event.payload).ok()
         };
-        self.evaluate_inner(event, parsed.as_ref())
+        let result = self.evaluate_inner(event, parsed.as_ref());
+
+        let us = start.elapsed().as_micros() as u64;
+        self.stats.record_evaluation(us, result.len());
+        self.circuit_breaker.report(us, &self.stats);
+
+        result
+    }
+
+    /// Degraded evaluation: only unfiltered subscriptions, no field matching.
+    fn evaluate_unfiltered_only(&self, event: &EventEnvelope) -> RoaringBitmap {
+        let mut result = RoaringBitmap::new();
+        for pattern_ref in &self.patterns {
+            if !pattern_ref.value().matches(&event.topic) {
+                continue;
+            }
+            if let Some(unfiltered) = self.unfiltered.get(pattern_ref.key().as_str()) {
+                result |= unfiltered.value();
+            }
+        }
+        result
     }
 
     /// Internal evaluation using a pre-parsed payload (avoids double-parse
@@ -77,12 +126,26 @@ impl FilterIndex {
     /// For `bitmap_exact` slots, the callback is invoked immediately.
     /// For non-exact slots, the filter is re-evaluated using the pre-parsed
     /// payload. JSON is parsed exactly **once** regardless of slot count.
+    ///
+    /// When the circuit breaker is open, only unfiltered slots are dispatched.
     pub fn for_each_match<F>(&self, event: &EventEnvelope, mut callback: F) -> usize
     where
         F: FnMut(ConnectionId, &SubscriptionId, Option<NodeId>),
     {
-        // Lazy JSON parse: skip when there are no indexed fields.
-        // Non-exact slots that need post-filtering will trigger a late parse.
+        let start = Instant::now();
+
+        // Circuit breaker: degraded path.
+        if self.circuit_breaker.is_open() {
+            let bitmap = self.evaluate_unfiltered_only(event);
+            let count = self.dispatch_bitmap(&bitmap, &mut callback);
+            let us = start.elapsed().as_micros() as u64;
+            self.stats.circuit_bypassed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            self.stats.record_evaluation(us, count as u64);
+            self.circuit_breaker.report(us, &self.stats);
+            return count;
+        }
+
+        // Normal path: lazy JSON parse.
         let has_fields = !self.fields_by_pattern.is_empty();
         let parsed: Option<serde_json::Value> = if has_fields {
             serde_json::from_slice(&event.payload).ok()
@@ -91,6 +154,9 @@ impl FilterIndex {
         };
         let bitmap = self.evaluate_inner(event, parsed.as_ref());
         if bitmap.is_empty() {
+            let us = start.elapsed().as_micros() as u64;
+            self.stats.record_evaluation(us, 0);
+            self.circuit_breaker.report(us, &self.stats);
             return 0;
         }
 
@@ -127,6 +193,36 @@ impl FilterIndex {
                 }
             }
         }
+
+        let us = start.elapsed().as_micros() as u64;
+        self.stats.record_evaluation(us, count as u64);
+        self.circuit_breaker.report(us, &self.stats);
+
+        count
+    }
+
+    /// Dispatch all slots in a bitmap (exact-only, no post-filtering).
+    ///
+    /// Used by the circuit-breaker degraded path where all returned slots
+    /// are from the unfiltered bitmap and are inherently exact.
+    fn dispatch_bitmap<F>(
+        &self,
+        bitmap: &RoaringBitmap,
+        callback: &mut F,
+    ) -> usize
+    where
+        F: FnMut(ConnectionId, &SubscriptionId, Option<NodeId>),
+    {
+        let slots = self.slots.read().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut count = 0;
+        for slot_id in bitmap {
+            // SAFETY: slot_id was inserted by alloc_slot and is always < slots.len().
+            let entry = unsafe { slots.get_unchecked(slot_id as usize) };
+            if let Some(slot) = entry {
+                callback(slot.conn_id, &slot.sub_id, slot.gateway_node);
+                count += 1;
+            }
+        }
         count
     }
 
@@ -134,10 +230,27 @@ impl FilterIndex {
     ///
     /// Like [`for_each_match()`] but returns a `Vec` sized to the bitmap
     /// length upfront, avoiding ~14 reallocations at 10K matches.
+    /// Respects the circuit breaker in the same way as [`for_each_match()`].
     pub fn collect_matches(
         &self,
         event: &EventEnvelope,
     ) -> Vec<(ConnectionId, SubscriptionId, Option<NodeId>)> {
+        let start = Instant::now();
+
+        // Circuit breaker: degraded path.
+        if self.circuit_breaker.is_open() {
+            let bitmap = self.evaluate_unfiltered_only(event);
+            let mut matches = Vec::with_capacity(bitmap.len() as usize);
+            self.dispatch_bitmap(&bitmap, &mut |conn_id, sub_id, node| {
+                matches.push((conn_id, sub_id.clone(), node));
+            });
+            let us = start.elapsed().as_micros() as u64;
+            self.stats.circuit_bypassed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            self.stats.record_evaluation(us, matches.len() as u64);
+            self.circuit_breaker.report(us, &self.stats);
+            return matches;
+        }
+
         let has_fields = !self.fields_by_pattern.is_empty();
         let parsed: Option<serde_json::Value> = if has_fields {
             serde_json::from_slice(&event.payload).ok()
@@ -146,6 +259,9 @@ impl FilterIndex {
         };
         let bitmap = self.evaluate_inner(event, parsed.as_ref());
         if bitmap.is_empty() {
+            let us = start.elapsed().as_micros() as u64;
+            self.stats.record_evaluation(us, 0);
+            self.circuit_breaker.report(us, &self.stats);
             return Vec::new();
         }
 
@@ -177,6 +293,11 @@ impl FilterIndex {
                 }
             }
         }
+
+        let us = start.elapsed().as_micros() as u64;
+        self.stats.record_evaluation(us, matches.len() as u64);
+        self.circuit_breaker.report(us, &self.stats);
+
         matches
     }
 }
