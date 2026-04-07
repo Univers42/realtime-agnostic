@@ -90,6 +90,19 @@ impl FilterIndex {
             slot_by_sub: DashMap::new(),
         }
     }
+    /// Convert a [`FilterValue`] to a string for composite key construction.
+    ///
+    /// Returns `Cow::Borrowed` for string values (zero-alloc fast path).
+    pub(crate) fn value_to_string(value: &FilterValue) -> Cow<'_, str> {
+        match value {
+            FilterValue::String(s) => Cow::Borrowed(s.as_str()),
+            FilterValue::Integer(i) => Cow::Owned(i.to_string()),
+            FilterValue::Float(f) => Cow::Owned(f.to_string()),
+            FilterValue::Bool(b) => Cow::Owned(b.to_string()),
+            FilterValue::Null => Cow::Borrowed("null"),
+        }
+    }
+
     /// Build a composite index key: `"pattern\0field\0value"`.
     fn make_index_key(pattern: &str, field: &str, value: &str) -> String {
         let mut key = String::with_capacity(pattern.len() + field.len() + value.len() + 2);
