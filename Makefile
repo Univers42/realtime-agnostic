@@ -1,7 +1,19 @@
-.PHONY: help build test up down logs clean seed status dev audit
+.PHONY: help build test up down logs clean seed status dev audit \
+        docker-login docker-build docker-push docker-update docker-tag docker-pull
 
 .DEFAULT_GOAL := help
 
+# ─── Docker Hub config ────────────────────────────────────────────────────
+# Read credentials from .env (never commit secrets).
+-include .env
+export
+
+DOCKER_USER    ?= dlesieur
+DOCKER_REPO    ?= realtime-agnostic
+IMAGE_NAME     := $(DOCKER_USER)/$(DOCKER_REPO)
+# Version: use git tag if present, otherwise git short hash, fallback to "dev".
+VERSION        ?= $(shell git describe --tags --exact-match 2>/dev/null || \
+                         git rev-parse --short HEAD 2>/dev/null || echo "dev")
 COMPOSE := docker compose -f sandbox/docker-compose.yml
 PROJECT := realtime-agnostic
 
@@ -110,3 +122,50 @@ test-ws: ## Quick WebSocket test (requires websocat)
 	@echo '{"type":"AUTH","token":"test"}' | \
 		timeout 3 websocat ws://localhost:4002/ws 2>/dev/null || \
 		echo "Install websocat: cargo install websocat"
+
+# ─── Docker Hub targets ───────────────────────────────────────────────────
+
+docker-login: ## Log in to Docker Hub using PAT from .env
+	@echo "$(PAT)" | docker login -u $(login_name) --password-stdin
+	@echo "Logged in as $(login_name)"
+
+docker-build: ## Build Docker image  →  dlesieur/realtime-agnostic:<version>
+	@echo "Building $(IMAGE_NAME):$(VERSION) ..."
+	docker build \
+		--tag $(IMAGE_NAME):$(VERSION) \
+		--tag $(IMAGE_NAME):latest \
+		--label "org.opencontainers.image.revision=$(VERSION)" \
+		--label "org.opencontainers.image.created=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)" \
+		.
+	@echo ""
+	@echo "  Built: $(IMAGE_NAME):$(VERSION)"
+	@echo "  Built: $(IMAGE_NAME):latest"
+
+docker-push: ## Push image to Docker Hub (run docker-login first)
+	docker push $(IMAGE_NAME):$(VERSION)
+	docker push $(IMAGE_NAME):latest
+	@echo ""
+	@echo "  Pushed: $(IMAGE_NAME):$(VERSION)"
+	@echo "  Pushed: $(IMAGE_NAME):latest"
+	@echo "  Hub:    https://hub.docker.com/r/$(IMAGE_NAME)"
+
+docker-update: docker-login docker-build docker-push ## Full update cycle: login → build → push
+	@echo ""
+	@echo "  ┌──────────────────────────────────────────────────┐"
+	@echo "  │  Image updated on Docker Hub                     │"
+	@echo "  │                                                  │"
+	@echo "  │  docker pull $(IMAGE_NAME):latest"
+	@echo "  │                                                  │"
+	@echo "  │  In your mini-baas docker-compose.yml:           │"
+	@echo "  │    image: $(IMAGE_NAME):latest  │"
+	@echo "  └──────────────────────────────────────────────────┘"
+
+docker-tag: ## Tag current image with a semantic version  (make docker-tag VERSION=1.0.0)
+ifndef VERSION
+	$(error VERSION is not set — use: make docker-tag VERSION=1.0.0)
+endif
+	docker tag $(IMAGE_NAME):latest $(IMAGE_NAME):$(VERSION)
+	@echo "Tagged $(IMAGE_NAME):latest → $(IMAGE_NAME):$(VERSION)"
+
+docker-pull: ## Pull latest image from Docker Hub (useful in mini-baas)
+	docker pull $(IMAGE_NAME):latest
