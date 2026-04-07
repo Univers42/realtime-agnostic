@@ -6,7 +6,7 @@
 /*   By: dlesieur <dlesieur@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/07 11:11:32 by dlesieur          #+#    #+#             */
-/*   Updated: 2026/04/07 11:14:21 by dlesieur         ###   ########.fr       */
+/*   Updated: 2026/04/07 23:40:36 by dlesieur         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -83,6 +83,16 @@ pub enum RealtimeError {
         retry_after_ms: u64,
     },
 
+    /// A capacity limit was exceeded (HTTP 429).
+    ///
+    /// Returned when subscription cardinality, pattern count, or
+    /// per-connection limits are hit.
+    #[error("Capacity exceeded: {reason}")]
+    CapacityExceeded {
+        /// Human-readable explanation of which limit was hit.
+        reason: String,
+    },
+
     /// Upstream dependency is unavailable (HTTP 503).
     #[error("Service unavailable: {0}")]
     ServiceUnavailable(String),
@@ -120,7 +130,7 @@ impl RealtimeError {
             Self::AuthFailed(_) => 401,
             Self::AuthorizationDenied(_) => 403,
             Self::PayloadTooLarge { .. } => 413,
-            Self::RateLimited { .. } => 429,
+            Self::RateLimited { .. } | Self::CapacityExceeded { .. } => 429,
             Self::ServiceUnavailable(_) => 503,
             Self::InvalidTopic(_) | Self::FilterParseError(_) | Self::SubscriptionError(_) => 400,
             _ => 500,

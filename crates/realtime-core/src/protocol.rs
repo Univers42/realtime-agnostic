@@ -6,7 +6,7 @@
 /*   By: dlesieur <dlesieur@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/07 11:11:41 by dlesieur          #+#    #+#             */
-/*   Updated: 2026/04/07 11:14:21 by dlesieur         ###   ########.fr       */
+/*   Updated: 2026/04/07 23:40:36 by dlesieur         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -273,6 +273,12 @@ pub struct HealthResponse {
     pub subscriptions: u64,
     /// Server uptime in seconds.
     pub uptime_seconds: u64,
+    /// Filter-index telemetry snapshot (present when engine stats are available).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filter_index: Option<serde_json::Value>,
+    /// Dispatch-pipeline telemetry snapshot.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dispatch: Option<serde_json::Value>,
 }
 
 impl ServerMessage {
