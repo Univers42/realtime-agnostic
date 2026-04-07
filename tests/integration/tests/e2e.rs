@@ -509,7 +509,7 @@ async fn test_subscription_registry_operations() {
         config: SubConfig::default(),
     };
 
-    registry.subscribe(sub, None);
+    registry.subscribe(sub, None).unwrap();
 
     let sub_event = EventEnvelope::new(
         TopicPath::new("orders/created"),
@@ -562,7 +562,7 @@ async fn test_filter_evaluation() {
         config: SubConfig::default(),
     };
 
-    registry.subscribe(sub, None);
+    registry.subscribe(sub, None).unwrap();
 
     // Verify the subscription matches an event with event_type="created"
     let event = EventEnvelope::new(
