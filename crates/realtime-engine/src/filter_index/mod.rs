@@ -2,14 +2,17 @@
 //!
 //! When thousands of subscriptions exist, evaluating each filter individually
 //! is O(S) per event. The [`FilterIndex`] pre-indexes filter predicates into
-//! [`RoaringBitmap`]s so that evaluation becomes a series of bitmap
-//! intersections — dramatically faster for large subscription sets.
+//! [`RoaringBitmap`]s so that evaluation becomes a series of bitmap operations
+//! — dramatically faster for large subscription sets.
 //!
-//! ## How it works
+//! ## Slot-based dispatch
 //!
-//! ```text
-//! topic_pattern → field_name → field_value → RoaringBitmap of conn_ids
-//! ```
+//! Instead of storing connection IDs in the bitmap and then doing O(n) `DashMap`
+//! lookups to resolve dispatch info, we store **slot IDs** that index directly
+//! into a `Vec<Option<DispatchSlot>>` slab (~2ns per slot vs ~30ns `DashMap`).
+//!
+//! The index uses flat composite keys `"pattern\0field\0value"` to avoid
+//! nested `DashMap` lock contention.
 
 mod evaluate;
 mod mutate;
