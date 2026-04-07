@@ -79,7 +79,15 @@ pub(super) async fn handle_subscribe(
         filter: filter.and_then(|f| FilterExpr::from_json(&f)),
         config: parse_sub_config(options),
     };
-    state.registry.subscribe(sub, None);
+    if let Err(e) = state.registry.subscribe(sub, None) {
+        warn!(conn_id = %conn_id, sub_id = %sub_id, "Subscribe rejected: {}", e);
+        send_ctrl(
+            ctrl_tx,
+            &ServerMessage::error("CAPACITY_EXCEEDED", e.to_string()),
+        )
+        .await;
+        return Action::Continue;
+    }
     debug!(conn_id = %conn_id, sub_id = %sub_id, "Subscribed");
     send_ctrl(ctrl_tx, &ServerMessage::Subscribed { sub_id, seq: 0 }).await;
     Action::Continue
@@ -104,7 +112,15 @@ pub(super) async fn handle_subscribe_batch(
             filter: item.filter.and_then(|f| FilterExpr::from_json(&f)),
             config: parse_sub_config(item.options),
         };
-        state.registry.subscribe(sub, None);
+        if let Err(e) = state.registry.subscribe(sub, None) {
+            warn!(conn_id = %conn_id, sub_id = %item.sub_id, "Subscribe rejected: {}", e);
+            send_ctrl(
+                ctrl_tx,
+                &ServerMessage::error("CAPACITY_EXCEEDED", e.to_string()),
+            )
+            .await;
+            continue;
+        }
         send_ctrl(
             ctrl_tx,
             &ServerMessage::Subscribed {

@@ -146,11 +146,22 @@ pub async fn publish_batch(
 
 #[allow(clippy::unused_async)]
 pub async fn health_check(State(state): State<AppState>) -> impl IntoResponse {
+    let filter_snapshot = state.registry.filter_index_snapshot();
+
+    // Status is "degraded" if the circuit breaker has recently bypassed evaluations.
+    let status = if filter_snapshot.circuit_bypassed > 0 {
+        "degraded"
+    } else {
+        "ok"
+    };
+
     let resp = HealthResponse {
-        status: "ok".to_string(),
+        status: status.to_string(),
         connections: state.conn_manager.connection_count() as u64,
         subscriptions: state.registry.subscription_count() as u64,
         uptime_seconds: 0,
+        filter_index: serde_json::to_value(&filter_snapshot).ok(),
+        dispatch: None,
     };
     (StatusCode::OK, Json(resp))
 }
