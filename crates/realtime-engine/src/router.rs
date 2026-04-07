@@ -6,7 +6,7 @@
 /*   By: dlesieur <dlesieur@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/07 11:13:18 by dlesieur          #+#    #+#             */
-/*   Updated: 2026/04/07 13:05:07 by dlesieur         ###   ########.fr       */
+/*   Updated: 2026/04/07 23:40:36 by dlesieur         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -23,6 +23,7 @@
 //! writes into each connection's individual send queue.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use realtime_core::{ConnectionId, EventBusSubscriber, EventEnvelope, SubscriptionId};
 use tokio::sync::mpsc;
@@ -66,6 +67,86 @@ pub struct EventRouter {
     registry: Arc<SubscriptionRegistry>,
     sequence_gen: Arc<SequenceGenerator>,
     dispatch_tx: mpsc::Sender<DispatchMessage>,
+    /// Lock-free dispatch pipeline telemetry.
+    dispatch_stats: DispatchStats,
+}
+
+/// Lock-free dispatch pipeline telemetry.
+///
+/// Tracks events routed, matches dispatched, channel failures, and
+/// batch sizing. All fields are `AtomicU64` — zero-contention reads.
+pub struct DispatchStats {
+    /// Total events processed by `route_event`.
+    events_routed: AtomicU64,
+    /// Total individual matches dispatched (sum of batch sizes).
+    matches_dispatched: AtomicU64,
+    /// Count of `try_send` failures on the dispatch channel.
+    dispatch_failures: AtomicU64,
+    /// Number of `DispatchMessage::Batch` messages sent.
+    batches_sent: AtomicU64,
+    /// Events that had zero matching subscriptions.
+    empty_routes: AtomicU64,
+    /// Largest batch size seen.
+    largest_batch: AtomicU64,
+}
+
+impl DispatchStats {
+    const fn new() -> Self {
+        Self {
+            events_routed: AtomicU64::new(0),
+            matches_dispatched: AtomicU64::new(0),
+            dispatch_failures: AtomicU64::new(0),
+            batches_sent: AtomicU64::new(0),
+            empty_routes: AtomicU64::new(0),
+            largest_batch: AtomicU64::new(0),
+        }
+    }
+
+    /// Take a point-in-time snapshot for serialization.
+    #[must_use]
+    pub fn snapshot(&self) -> DispatchStatsSnapshot {
+        DispatchStatsSnapshot {
+            events_routed: self.events_routed.load(Ordering::Relaxed),
+            matches_dispatched: self.matches_dispatched.load(Ordering::Relaxed),
+            dispatch_failures: self.dispatch_failures.load(Ordering::Relaxed),
+            batches_sent: self.batches_sent.load(Ordering::Relaxed),
+            empty_routes: self.empty_routes.load(Ordering::Relaxed),
+            largest_batch: self.largest_batch.load(Ordering::Relaxed),
+        }
+    }
+
+    /// Update the largest-batch high-water mark (CAS loop, wait-free in practice).
+    fn update_largest_batch(&self, size: u64) {
+        let mut current = self.largest_batch.load(Ordering::Relaxed);
+        while size > current {
+            match self.largest_batch.compare_exchange_weak(
+                current,
+                size,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => break,
+                Err(actual) => current = actual,
+            }
+        }
+    }
+}
+
+/// Serializable snapshot of dispatch pipeline telemetry.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DispatchStatsSnapshot {
+    /// Total events processed by `route_event`.
+    pub events_routed: u64,
+    /// Total individual matches dispatched.
+    pub matches_dispatched: u64,
+    /// Dispatch channel send failures.
+    pub dispatch_failures: u64,
+    /// Batch messages sent.
+    pub batches_sent: u64,
+    /// Events with zero matches.
+    pub empty_routes: u64,
+    /// High-water mark for batch size.
+    pub largest_batch: u64,
 }
 
 /// A dispatch instruction destined for a local connection.
@@ -97,6 +178,7 @@ impl EventRouter {
             registry,
             sequence_gen,
             dispatch_tx,
+            dispatch_stats: DispatchStats::new(),
         }
     }
 
@@ -116,15 +198,24 @@ impl EventRouter {
             targets.push((conn_id, sub_id.clone()));
         });
         let count = targets.len();
+
+        self.dispatch_stats.events_routed.fetch_add(1, Ordering::Relaxed);
+        self.dispatch_stats.matches_dispatched.fetch_add(count as u64, Ordering::Relaxed);
+
         if count == 0 {
+            self.dispatch_stats.empty_routes.fetch_add(1, Ordering::Relaxed);
             debug!(topic = %event.topic, "No matching subscriptions for event");
         } else {
+            self.dispatch_stats.update_largest_batch(count as u64);
             let msg = DispatchMessage::Batch {
                 event: event.clone(),
                 targets,
             };
             if let Err(e) = self.dispatch_tx.try_send(msg) {
+                self.dispatch_stats.dispatch_failures.fetch_add(1, Ordering::Relaxed);
                 warn!("Dispatch channel full or closed: {}", e);
+            } else {
+                self.dispatch_stats.batches_sent.fetch_add(1, Ordering::Relaxed);
             }
             debug!(
                 topic = %event.topic, event_id = %event.event_id,
@@ -168,6 +259,12 @@ impl EventRouter {
     pub const fn registry(&self) -> &Arc<SubscriptionRegistry> {
         &self.registry
     }
+
+    /// Access the live dispatch pipeline stats.
+    #[must_use]
+    pub const fn dispatch_stats(&self) -> &DispatchStats {
+        &self.dispatch_stats
+    }
 }
 
 #[allow(clippy::unwrap_used)]
@@ -194,7 +291,7 @@ mod tests {
             filter: None,
             config: SubConfig::default(),
         };
-        registry.subscribe(sub, None);
+        registry.subscribe(sub, None).unwrap();
 
         // Route event
         let event = EventEnvelope::new(
@@ -237,7 +334,7 @@ mod tests {
                 filter: None,
                 config: SubConfig::default(),
             };
-            registry.subscribe(sub, None);
+            registry.subscribe(sub, None).unwrap();
         }
 
         let event = EventEnvelope::new(TopicPath::new("broadcast"), "notify", Bytes::from("{}"));
@@ -283,7 +380,7 @@ mod tests {
             filter: None,
             config: SubConfig::default(),
         };
-        registry.subscribe(sub, None);
+        registry.subscribe(sub, None).unwrap();
 
         for i in 1..=5 {
             let event = EventEnvelope::new(
