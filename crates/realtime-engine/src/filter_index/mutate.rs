@@ -10,7 +10,10 @@
 
 use std::sync::atomic::Ordering;
 
-use realtime_core::{filter::{FieldPath, FilterExpr}, NodeId, RealtimeError, Subscription};
+use realtime_core::{
+    filter::{FieldPath, FilterExpr},
+    NodeId, RealtimeError, Subscription,
+};
 
 use super::FilterIndex;
 
@@ -38,10 +41,7 @@ impl FilterIndex {
         // ── Pre-flight limit checks (no state mutated yet) ────────
         self.check_limits(&pattern_key, sub)?;
 
-        let bitmap_exact = sub
-            .filter
-            .as_ref()
-            .is_none_or(Self::is_filter_exact);
+        let bitmap_exact = sub.filter.as_ref().is_none_or(Self::is_filter_exact);
 
         // Allocate a dispatch slot.
         let slot = super::DispatchSlot {
@@ -84,16 +84,14 @@ impl FilterIndex {
     }
 
     /// Validate all limits before mutating state.
-    fn check_limits(
-        &self,
-        pattern_key: &str,
-        sub: &Subscription,
-    ) -> realtime_core::Result<()> {
+    fn check_limits(&self, pattern_key: &str, sub: &Subscription) -> realtime_core::Result<()> {
         let limits = &self.limits;
 
         // Global subscription count.
         if self.slot_by_sub.len() >= limits.max_total_subscriptions {
-            self.stats.subscriptions_rejected.fetch_add(1, Ordering::Relaxed);
+            self.stats
+                .subscriptions_rejected
+                .fetch_add(1, Ordering::Relaxed);
             return Err(RealtimeError::CapacityExceeded {
                 reason: format!(
                     "global subscription limit reached ({})",
@@ -104,7 +102,9 @@ impl FilterIndex {
 
         // Pattern count.
         if !self.patterns.contains_key(pattern_key) && self.patterns.len() >= limits.max_patterns {
-            self.stats.subscriptions_rejected.fetch_add(1, Ordering::Relaxed);
+            self.stats
+                .subscriptions_rejected
+                .fetch_add(1, Ordering::Relaxed);
             return Err(RealtimeError::CapacityExceeded {
                 reason: format!(
                     "pattern limit reached ({}) for new pattern \"{}\"",
@@ -120,7 +120,9 @@ impl FilterIndex {
             .get(pattern_key)
             .map_or(0, |bm| bm.len() as usize);
         if pattern_sub_count >= limits.max_subscriptions_per_pattern {
-            self.stats.subscriptions_rejected.fetch_add(1, Ordering::Relaxed);
+            self.stats
+                .subscriptions_rejected
+                .fetch_add(1, Ordering::Relaxed);
             return Err(RealtimeError::CapacityExceeded {
                 reason: format!(
                     "pattern \"{}\" already has {} subscriptions (max: {})",
@@ -134,7 +136,9 @@ impl FilterIndex {
         let current_keys = self.stats.composite_key_count.load(Ordering::Relaxed) as usize;
         let estimated_new_keys = Self::estimate_new_keys(sub);
         if current_keys + estimated_new_keys > limits.max_composite_keys {
-            self.stats.subscriptions_rejected.fetch_add(1, Ordering::Relaxed);
+            self.stats
+                .subscriptions_rejected
+                .fetch_add(1, Ordering::Relaxed);
             return Err(RealtimeError::CapacityExceeded {
                 reason: format!(
                     "composite key limit would be exceeded ({} + {} > {})",
@@ -151,7 +155,9 @@ impl FilterIndex {
                 .map_or(0, |v| v.len());
             let new_fields = Self::count_new_fields(filter);
             if existing_fields + new_fields > limits.max_fields_per_pattern {
-                self.stats.subscriptions_rejected.fetch_add(1, Ordering::Relaxed);
+                self.stats
+                    .subscriptions_rejected
+                    .fetch_add(1, Ordering::Relaxed);
                 return Err(RealtimeError::CapacityExceeded {
                     reason: format!(
                         "pattern \"{}\" would exceed field limit ({} + {} > {})",
@@ -166,7 +172,7 @@ impl FilterIndex {
 
     /// Estimate how many new composite keys a subscription will add.
     fn estimate_new_keys(sub: &Subscription) -> usize {
-sub.filter.as_ref().map_or(0, Self::count_keys_in_filter)
+        sub.filter.as_ref().map_or(0, Self::count_keys_in_filter)
     }
 
     fn count_keys_in_filter(filter: &FilterExpr) -> usize {
@@ -226,22 +232,33 @@ sub.filter.as_ref().map_or(0, Self::count_keys_in_filter)
                     }
                 }
                 // Decrement composite key counter.
-                self.stats.composite_key_count.fetch_sub(removed, Ordering::Relaxed);
+                self.stats
+                    .composite_key_count
+                    .fetch_sub(removed, Ordering::Relaxed);
             }
         }
     }
 
     /// Allocate a slot in the dispatch slab, reusing free slots.
     fn alloc_slot(&self, slot: super::DispatchSlot) -> u32 {
-        let mut free = self.free_slots.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut free = self
+            .free_slots
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(id) = free.pop() {
             drop(free);
-            let mut slots = self.slots.write().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut slots = self
+                .slots
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             slots[id as usize] = Some(slot);
             id
         } else {
             drop(free);
-            let mut slots = self.slots.write().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut slots = self
+                .slots
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             let id = u32::try_from(slots.len()).unwrap_or(u32::MAX);
             slots.push(Some(slot));
             id
@@ -250,12 +267,18 @@ sub.filter.as_ref().map_or(0, Self::count_keys_in_filter)
 
     /// Free a slot in the dispatch slab for reuse.
     fn free_slot(&self, slot_id: u32) {
-        let mut slots = self.slots.write().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut slots = self
+            .slots
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(entry) = slots.get_mut(slot_id as usize) {
             *entry = None;
         }
         drop(slots);
-        let mut free = self.free_slots.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut free = self
+            .free_slots
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         free.push(slot_id);
     }
 
@@ -272,7 +295,9 @@ sub.filter.as_ref().map_or(0, Self::count_keys_in_filter)
                 let vs = Self::value_to_string(value);
                 let key = Self::make_index_key(pattern_key, &field.0, &vs);
                 self.index.entry(key.clone()).or_default().insert(slot_id);
-                self.stats.composite_key_count.fetch_add(1, Ordering::Relaxed);
+                self.stats
+                    .composite_key_count
+                    .fetch_add(1, Ordering::Relaxed);
                 {
                     let mut fields = self
                         .fields_by_pattern
@@ -289,7 +314,9 @@ sub.filter.as_ref().map_or(0, Self::count_keys_in_filter)
                     let vs = Self::value_to_string(v);
                     let key = Self::make_index_key(pattern_key, &field.0, &vs);
                     self.index.entry(key.clone()).or_default().insert(slot_id);
-                    self.stats.composite_key_count.fetch_add(1, Ordering::Relaxed);
+                    self.stats
+                        .composite_key_count
+                        .fetch_add(1, Ordering::Relaxed);
                     tracked_keys.push(key);
                 }
                 {

@@ -22,8 +22,8 @@
 //! The gateway's fan-out task reads from the dispatch channel and
 //! writes into each connection's individual send queue.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 use realtime_core::{ConnectionId, EventBusSubscriber, EventEnvelope, SubscriptionId};
 use tokio::sync::mpsc;
@@ -194,16 +194,23 @@ impl EventRouter {
         event.sequence = self.sequence_gen.next(event.topic.as_str());
         let event = Arc::new(event);
         let mut targets = Vec::new();
-        self.registry.for_each_match(&event, |conn_id, sub_id, _node| {
-            targets.push((conn_id, sub_id.clone()));
-        });
+        self.registry
+            .for_each_match(&event, |conn_id, sub_id, _node| {
+                targets.push((conn_id, sub_id.clone()));
+            });
         let count = targets.len();
 
-        self.dispatch_stats.events_routed.fetch_add(1, Ordering::Relaxed);
-        self.dispatch_stats.matches_dispatched.fetch_add(count as u64, Ordering::Relaxed);
+        self.dispatch_stats
+            .events_routed
+            .fetch_add(1, Ordering::Relaxed);
+        self.dispatch_stats
+            .matches_dispatched
+            .fetch_add(count as u64, Ordering::Relaxed);
 
         if count == 0 {
-            self.dispatch_stats.empty_routes.fetch_add(1, Ordering::Relaxed);
+            self.dispatch_stats
+                .empty_routes
+                .fetch_add(1, Ordering::Relaxed);
             debug!(topic = %event.topic, "No matching subscriptions for event");
         } else {
             self.dispatch_stats.update_largest_batch(count as u64);
@@ -212,10 +219,14 @@ impl EventRouter {
                 targets,
             };
             if let Err(e) = self.dispatch_tx.try_send(msg) {
-                self.dispatch_stats.dispatch_failures.fetch_add(1, Ordering::Relaxed);
+                self.dispatch_stats
+                    .dispatch_failures
+                    .fetch_add(1, Ordering::Relaxed);
                 warn!("Dispatch channel full or closed: {}", e);
             } else {
-                self.dispatch_stats.batches_sent.fetch_add(1, Ordering::Relaxed);
+                self.dispatch_stats
+                    .batches_sent
+                    .fetch_add(1, Ordering::Relaxed);
             }
             debug!(
                 topic = %event.topic, event_id = %event.event_id,

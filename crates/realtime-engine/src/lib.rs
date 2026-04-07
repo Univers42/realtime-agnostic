@@ -43,9 +43,9 @@ pub mod registry;
 pub mod router;
 pub mod sequence;
 
-pub use filter_index::{DispatchSlot, FilterIndex};
 pub use filter_index::limits::FilterIndexLimits;
 pub use filter_index::stats::StatsSnapshot;
+pub use filter_index::{DispatchSlot, FilterIndex};
 pub use producer_registry::ProducerRegistry;
 pub use registry::SubscriptionRegistry;
 pub use router::{DispatchStatsSnapshot, EventRouter};

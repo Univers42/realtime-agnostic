@@ -134,9 +134,8 @@ fn bench_filter_expr(c: &mut Criterion) {
         let f = eq_filter("payload.status", "active");
         // Measure WITHOUT pre-parsed payload (re-parses every call)
         b.iter(|| {
-            let getter = |fld: &FieldPath| {
-                realtime_core::filter::envelope_field_getter(&event, fld)
-            };
+            let getter =
+                |fld: &FieldPath| realtime_core::filter::envelope_field_getter(&event, fld);
             f.evaluate(black_box(&getter))
         });
     });

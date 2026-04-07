@@ -39,7 +39,9 @@ impl FilterIndex {
         if self.circuit_breaker.is_open() {
             let result = self.evaluate_unfiltered_only(event);
             let us = start.elapsed().as_micros() as u64;
-            self.stats.circuit_bypassed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            self.stats
+                .circuit_bypassed
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             self.stats.record_evaluation(us, result.len());
             self.circuit_breaker.report(us, &self.stats);
             return result;
@@ -98,11 +100,9 @@ impl FilterIndex {
             // Look up indexed fields using flat composite keys.
             if let Some(fields) = self.fields_by_pattern.get(pattern_key.as_str()) {
                 for field_path in fields.value() {
-                    if let Some(fv) = envelope_field_getter_cached(
-                        event,
-                        field_path,
-                        parsed_payload,
-                    ) {
+                    if let Some(fv) =
+                        envelope_field_getter_cached(event, field_path, parsed_payload)
+                    {
                         let vs = Self::value_to_string(&fv);
                         key_buf.clear();
                         key_buf.push_str(pattern_key);
@@ -139,7 +139,9 @@ impl FilterIndex {
             let bitmap = self.evaluate_unfiltered_only(event);
             let count = self.dispatch_bitmap(&bitmap, &mut callback);
             let us = start.elapsed().as_micros() as u64;
-            self.stats.circuit_bypassed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            self.stats
+                .circuit_bypassed
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             self.stats.record_evaluation(us, count as u64);
             self.circuit_breaker.report(us, &self.stats);
             return count;
@@ -163,7 +165,10 @@ impl FilterIndex {
         // Late parse is deferred until the first non-exact slot needs it.
         let mut late_parsed: Option<serde_json::Value> = None;
 
-        let slots = self.slots.read().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let slots = self
+            .slots
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut count = 0;
 
         for slot_id in &bitmap {
@@ -180,9 +185,8 @@ impl FilterIndex {
                         late_parsed = serde_json::from_slice(&event.payload).ok();
                     }
                     let parsed_ref = parsed.as_ref().or(late_parsed.as_ref());
-                    let getter = |fld: &FieldPath| {
-                        envelope_field_getter_cached(event, fld, parsed_ref)
-                    };
+                    let getter =
+                        |fld: &FieldPath| envelope_field_getter_cached(event, fld, parsed_ref);
                     if f.evaluate(&getter) {
                         callback(slot.conn_id, &slot.sub_id, slot.gateway_node);
                         count += 1;
@@ -205,15 +209,14 @@ impl FilterIndex {
     ///
     /// Used by the circuit-breaker degraded path where all returned slots
     /// are from the unfiltered bitmap and are inherently exact.
-    fn dispatch_bitmap<F>(
-        &self,
-        bitmap: &RoaringBitmap,
-        callback: &mut F,
-    ) -> usize
+    fn dispatch_bitmap<F>(&self, bitmap: &RoaringBitmap, callback: &mut F) -> usize
     where
         F: FnMut(ConnectionId, &SubscriptionId, Option<NodeId>),
     {
-        let slots = self.slots.read().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let slots = self
+            .slots
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut count = 0;
         for slot_id in bitmap {
             // SAFETY: slot_id was inserted by alloc_slot and is always < slots.len().
@@ -245,7 +248,9 @@ impl FilterIndex {
                 matches.push((conn_id, sub_id.clone(), node));
             });
             let us = start.elapsed().as_micros() as u64;
-            self.stats.circuit_bypassed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            self.stats
+                .circuit_bypassed
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             self.stats.record_evaluation(us, matches.len() as u64);
             self.circuit_breaker.report(us, &self.stats);
             return matches;
@@ -269,7 +274,10 @@ impl FilterIndex {
 
         #[allow(clippy::cast_possible_truncation)]
         let mut matches = Vec::with_capacity(bitmap.len() as usize);
-        let slots = self.slots.read().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let slots = self
+            .slots
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         for slot_id in &bitmap {
             // SAFETY: slot_id was inserted by alloc_slot and is always < slots.len().
@@ -282,9 +290,8 @@ impl FilterIndex {
                         late_parsed = serde_json::from_slice(&event.payload).ok();
                     }
                     let parsed_ref = parsed.as_ref().or(late_parsed.as_ref());
-                    let getter = |fld: &FieldPath| {
-                        envelope_field_getter_cached(event, fld, parsed_ref)
-                    };
+                    let getter =
+                        |fld: &FieldPath| envelope_field_getter_cached(event, fld, parsed_ref);
                     if f.evaluate(&getter) {
                         matches.push((slot.conn_id, slot.sub_id.clone(), slot.gateway_node));
                     }

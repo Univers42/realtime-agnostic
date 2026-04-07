@@ -20,9 +20,7 @@ use realtime_core::{
     ConnectionId, EventEnvelope, SubConfig, Subscription, SubscriptionId, TopicPath, TopicPattern,
 };
 use realtime_engine::{
-    registry::SubscriptionRegistry,
-    router::EventRouter,
-    FilterIndex, SequenceGenerator,
+    registry::SubscriptionRegistry, router::EventRouter, FilterIndex, SequenceGenerator,
 };
 use smol_str::SmolStr;
 use tokio::sync::mpsc;
@@ -219,9 +217,8 @@ fn bench_filter_expr(c: &mut Criterion) {
         let f = eq_filter("payload.status", "active");
         // Measure WITHOUT pre-parsed payload (re-parses every call)
         b.iter(|| {
-            let getter = |fld: &FieldPath| {
-                realtime_core::filter::envelope_field_getter(&event, fld)
-            };
+            let getter =
+                |fld: &FieldPath| realtime_core::filter::envelope_field_getter(&event, fld);
             f.evaluate(black_box(&getter))
         });
     });
@@ -416,26 +413,21 @@ fn bench_router(c: &mut Criterion) {
 
     // With eq filters (half match)
     for &n in &[100, 1_000, 10_000] {
-        group.bench_with_input(
-            BenchmarkId::new("route_event_eq_filter", n),
-            &n,
-            |b, &n| {
-                let registry = Arc::new(SubscriptionRegistry::new());
-                let seq_gen = Arc::new(SequenceGenerator::new());
-                let (dispatch_tx, _dispatch_rx) = mpsc::channel(65536);
-                let router = EventRouter::new(Arc::clone(&registry), seq_gen, dispatch_tx);
-                for i in 0..n {
-                    let f =
-                        eq_filter("event_type", if i % 2 == 0 { "created" } else { "updated" });
-                    let sub = make_sub(i, &format!("s-{i}"), "orders/*", Some(f));
-                    registry.subscribe(sub, None).unwrap();
-                }
-                b.iter(|| {
-                    let event = make_event("orders/123", "created");
-                    router.route_event(black_box(event))
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("route_event_eq_filter", n), &n, |b, &n| {
+            let registry = Arc::new(SubscriptionRegistry::new());
+            let seq_gen = Arc::new(SequenceGenerator::new());
+            let (dispatch_tx, _dispatch_rx) = mpsc::channel(65536);
+            let router = EventRouter::new(Arc::clone(&registry), seq_gen, dispatch_tx);
+            for i in 0..n {
+                let f = eq_filter("event_type", if i % 2 == 0 { "created" } else { "updated" });
+                let sub = make_sub(i, &format!("s-{i}"), "orders/*", Some(f));
+                registry.subscribe(sub, None).unwrap();
+            }
+            b.iter(|| {
+                let event = make_event("orders/123", "created");
+                router.route_event(black_box(event))
+            });
+        });
     }
 
     // No subscribers (fast path)
@@ -463,9 +455,7 @@ fn bench_envelope(c: &mut Criterion) {
     group.measurement_time(Duration::from_secs(2));
 
     group.bench_function("create", |b| {
-        b.iter(|| {
-            make_event(black_box("orders/created"), black_box("created"))
-        });
+        b.iter(|| make_event(black_box("orders/created"), black_box("created")));
     });
 
     group.bench_function("serialize_json", |b| {
