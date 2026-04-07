@@ -21,3 +21,6 @@ dashmap = { workspace = true }
 roaring = { workspace = true }
 tracing = { workspace = true }
 pin-project-lite = { workspace = true }
+
+[lints]
+workspace = true

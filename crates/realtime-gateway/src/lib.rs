@@ -1,15 +1,3 @@
-/* ************************************************************************** */
-/*                                                                            */
-/*                                                        :::      ::::::::   */
-/*   lib.rs                                             :+:      :+:    :+:   */
-/*                                                    +:+ +:+         +:+     */
-/*   By: dlesieur <dlesieur@student.42.fr>          +#+  +:+       +#+        */
-/*                                                +#+#+#+#+#+   +#+           */
-/*   Created: 2026/04/07 11:13:30 by dlesieur          #+#    #+#             */
-/*   Updated: 2026/04/07 11:13:31 by dlesieur         ###   ########.fr       */
-/*                                                                            */
-/* ************************************************************************** */
-
 //! # realtime-gateway
 //!
 //! WebSocket gateway, connection lifecycle management, fan-out pipeline, and REST API
@@ -37,8 +25,8 @@
 
 pub mod connection;
 pub mod fanout;
-pub mod ws_handler;
 pub mod rest_api;
+pub mod ws_handler;
 
 pub use connection::ConnectionManager;
 pub use fanout::FanOutWorkerPool;

@@ -1,15 +1,3 @@
-/* ************************************************************************** */
-/*                                                                            */
-/*                                                        :::      ::::::::   */
-/*   lib.rs                                             :+:      :+:    :+:   */
-/*                                                    +:+ +:+         +:+     */
-/*   By: dlesieur <dlesieur@student.42.fr>          +#+  +:+       +#+        */
-/*                                                +#+#+#+#+#+   +#+           */
-/*   Created: 2026/04/07 11:12:12 by dlesieur          #+#    #+#             */
-/*   Updated: 2026/04/07 11:12:13 by dlesieur         ###   ########.fr       */
-/*                                                                            */
-/* ************************************************************************** */
-
 //! # realtime-auth
 //!
 //! Authentication and authorization providers for the Realtime-Agnostic engine.
@@ -22,11 +10,11 @@
 //!   their allowed namespaces.
 //!
 //! - [`NoAuthProvider`] — Accepts any token, returns full-access claims.
-//!   Used for development, testing, and the SyncSpace demo.
+//!   Used for development, testing, and the `SyncSpace` demo.
 //!
 //! ## Custom Auth
 //!
-//! Implement [`AuthProvider`](realtime_core::AuthProvider) to add OAuth2,
+//! Implement [`AuthProvider`](realtime_core::AuthProvider) to add `OAuth2`,
 //! API key, or any other authentication mechanism.
 
 pub mod jwt;

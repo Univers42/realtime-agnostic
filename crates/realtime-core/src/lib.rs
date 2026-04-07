@@ -36,16 +36,16 @@
 //! ## Protocol
 //!
 //! - [`ClientMessage`] — Messages sent from client to server (AUTH, SUBSCRIBE, PUBLISH, etc.).
-//! - [`ServerMessage`] — Messages sent from server to client (AUTH_OK, EVENT, ERROR, etc.).
+//! - [`ServerMessage`] — Messages sent from server to client (`AUTH_OK`, EVENT, ERROR, etc.).
 
-pub mod types;
-pub mod traits;
-pub mod protocol;
 pub mod error;
 pub mod filter;
+pub mod protocol;
+pub mod traits;
+pub mod types;
 
-pub use types::*;
-pub use traits::*;
-pub use protocol::*;
 pub use error::*;
 pub use filter::*;
+pub use protocol::*;
+pub use traits::*;
+pub use types::*;

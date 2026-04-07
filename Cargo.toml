@@ -13,6 +13,13 @@ members = [
     "tests/integration",
 ]
 
+[workspace.lints.clippy]
+pedantic    = { level = "warn", priority = -1 }
+nursery     = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic       = "deny"
+
 [workspace.package]
 version = "0.1.0"
 edition = "2021"

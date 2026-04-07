@@ -1,15 +1,3 @@
-/* ************************************************************************** */
-/*                                                                            */
-/*                                                        :::      ::::::::   */
-/*   lib.rs                                             :+:      :+:    :+:   */
-/*                                                    +:+ +:+         +:+     */
-/*   By: dlesieur <dlesieur@student.42.fr>          +#+  +:+       +#+        */
-/*                                                +#+#+#+#+#+   +#+           */
-/*   Created: 2026/04/07 11:13:41 by dlesieur          #+#    #+#             */
-/*   Updated: 2026/04/07 11:13:43 by dlesieur         ###   ########.fr       */
-/*                                                                            */
-/* ************************************************************************** */
-
 //! # realtime-server
 //!
 //! Binary entrypoint and assembly logic for the Realtime-Agnostic event engine.
@@ -28,7 +16,8 @@
 //! Three methods (in priority order):
 //! 1. **JSON config file**: `REALTIME_CONFIG=/path/to/config.json`
 //! 2. **Environment variables**: `REALTIME_HOST`, `REALTIME_PORT`, `REALTIME_PG_URL`, etc.
-//! 3. **Defaults**: `0.0.0.0:9090`, NoAuth, InProcessBus(65536)
+//! 3. **Defaults**: `0.0.0.0:9090`, `NoAuth`, InProcessBus(65536)
 
 pub mod config;
 pub mod server;
+pub mod signal;

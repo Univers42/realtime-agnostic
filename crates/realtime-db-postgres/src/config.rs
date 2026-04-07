@@ -1,20 +1,8 @@
-/* ************************************************************************** */
-/*                                                                            */
-/*                                                        :::      ::::::::   */
-/*   config.rs                                          :+:      :+:    :+:   */
-/*                                                    +:+ +:+         +:+     */
-/*   By: dlesieur <dlesieur@student.42.fr>          +#+  +:+       +#+        */
-/*                                                +#+#+#+#+#+   +#+           */
-/*   Created: 2026/04/07 11:12:50 by dlesieur          #+#    #+#             */
-/*   Updated: 2026/04/07 11:17:52 by dlesieur         ###   ########.fr       */
-/*                                                                            */
-/* ************************************************************************** */
-
-//! Configuration types for the PostgreSQL CDC producer.
+//! Configuration types for the `PostgreSQL` CDC producer.
 
 use serde::{Deserialize, Serialize};
 
-/// PostgreSQL CDC configuration.
+/// `PostgreSQL` CDC configuration.
 ///
 /// ## JSON example
 ///
@@ -33,7 +21,7 @@ pub struct PostgresConfig {
     pub connection_string: String,
 
     /// Channel name for LISTEN/NOTIFY.
-    /// The default channel is "realtime_events".
+    /// The default channel is "`realtime_events`".
     #[serde(default = "default_channel")]
     pub channel: String,
 
@@ -74,7 +62,7 @@ fn default_prefix() -> String {
     "db".to_string()
 }
 
-fn default_poll_interval() -> u64 {
+const fn default_poll_interval() -> u64 {
     100
 }
 

@@ -6,7 +6,7 @@
 /*   By: dlesieur <dlesieur@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/07 11:13:21 by dlesieur          #+#    #+#             */
-/*   Updated: 2026/04/07 11:14:21 by dlesieur         ###   ########.fr       */
+/*   Updated: 2026/04/07 13:05:07 by dlesieur         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -19,9 +19,9 @@
 //! Clients use sequence numbers for gap detection and reconnection
 //! catch-up (`resume_from` in subscription options).
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use dashmap::DashMap;
 use smol_str::SmolStr;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Per-topic monotonically increasing sequence generator.
 ///
@@ -43,6 +43,7 @@ pub struct SequenceGenerator {
 
 impl SequenceGenerator {
     /// Create a new generator with no topics.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             sequences: DashMap::new(),
@@ -53,6 +54,7 @@ impl SequenceGenerator {
     ///
     /// Creates the counter on first access (starting at 0, so the first
     /// returned value is 1).
+    #[must_use]
     pub fn next(&self, topic: &str) -> u64 {
         let key = SmolStr::new(topic);
         self.sequences
@@ -65,12 +67,12 @@ impl SequenceGenerator {
     /// Read the current sequence number for a topic without incrementing.
     ///
     /// Returns 0 if the topic has never been seen.
+    #[must_use]
     pub fn current(&self, topic: &str) -> u64 {
         let key = SmolStr::new(topic);
         self.sequences
             .get(&key)
-            .map(|v| v.load(Ordering::SeqCst))
-            .unwrap_or(0)
+            .map_or(0, |v| v.load(Ordering::SeqCst))
     }
 }
 
@@ -108,7 +110,7 @@ mod tests {
     fn test_sequence_current() {
         let gen = SequenceGenerator::new();
         assert_eq!(gen.current("none"), 0);
-        gen.next("test");
+        let _ = gen.next("test");
         assert_eq!(gen.current("test"), 1);
     }
 }

@@ -1,4 +1,6 @@
-.PHONY: help build test up down logs clean seed status dev
+.PHONY: help build test up down logs clean seed status dev audit
+
+.DEFAULT_GOAL := help
 
 COMPOSE := docker compose -f sandbox/docker-compose.yml
 PROJECT := realtime-agnostic
@@ -16,13 +18,21 @@ test: ## Run all tests (78 unit + integration)
 check: ## Check compilation with zero warnings
 	cargo check --workspace 2>&1 | grep -v "Compiling\|Checking\|Finished"
 
+audit: ## Run full code audit (fmt, clippy, tests)
+	@echo "Formatting..."
+	cargo fmt --all -- --check
+	@echo "Running clippy..."
+	cargo clippy --all-targets --all-features
+	@echo "Running tests..."
+	cargo test --workspace
+
 up: ## Start databases + server via Docker Compose
 	$(COMPOSE) up --build -d
 	@echo ""
 	@echo "  ┌──────────────────────────────────────────────┐"
 	@echo "  │  SyncSpace is starting...                    │"
 	@echo "  │                                              │"
-  │  Web UI:    http://localhost:4002             │
+	@echo "  │  Web UI:    http://localhost:4002             │"
 	@echo "  │  Health:    http://localhost:4002/v1/health   │"
 	@echo "  │  WebSocket: ws://localhost:4002/ws            │"
 	@echo "  │                                              │"
@@ -69,10 +79,14 @@ seed: ## Re-seed databases (requires running containers)
 			mongo:7 mongosh --host mongo syncspace /seed.js
 	@echo "Seed complete."
 
-dev: ## Run Rust server locally (expects PG on :5432, Mongo on :27017)
+dev: ## Run Rust server locally and open browser (expects PG:5432, Mongo:27017)
+	@echo "Stopping existing local servers..."
+	-@pkill -x realtime-server || true
+	@echo "Starting Rust server on http://localhost:4001 and opening browser..."
+	@sleep 2 && (xdg-open http://localhost:4001 || open http://localhost:4001) >/dev/null 2>&1 &
 	RUST_LOG=info,realtime_gateway=debug,realtime_server=debug \
 	REALTIME_HOST=0.0.0.0 \
-	REALTIME_PORT=4000 \
+	REALTIME_PORT=4001 \
 	REALTIME_STATIC_DIR=sandbox/static \
 	cargo run --bin realtime-server
 

@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 //! End-to-end integration tests for the realtime engine.
 //!
 //! These tests spin up a complete in-process server stack (event bus, registry,
@@ -15,14 +17,9 @@ use bytes::Bytes;
 use futures::{SinkExt, StreamExt};
 use realtime_auth::NoAuthProvider;
 use realtime_bus_inprocess::InProcessBus;
-use realtime_core::{
-    AuthProvider, EventBus, EventBusPublisher, EventEnvelope,
-    TopicPath,
-};
+use realtime_core::{AuthProvider, EventBus, EventBusPublisher, EventEnvelope, TopicPath};
 use realtime_engine::{
-    registry::SubscriptionRegistry,
-    router::EventRouter,
-    sequence::SequenceGenerator,
+    registry::SubscriptionRegistry, router::EventRouter, sequence::SequenceGenerator,
 };
 use realtime_gateway::{
     connection::ConnectionManager,
@@ -98,16 +95,17 @@ async fn start_test_server() -> (String, Arc<dyn EventBusPublisher>, Arc<dyn Eve
 /// Helper: connect a WebSocket client, authenticate, and return the stream.
 async fn connect_and_auth(
     addr: &str,
-) -> tokio_tungstenite::WebSocketStream<
-    tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
-> {
-    let url = format!("ws://{}/ws", addr);
+) -> tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>> {
+    let url = format!("ws://{addr}/ws");
     let (ws_stream, _) = connect_async(&url).await.expect("Failed to connect");
     let (mut write, read) = ws_stream.split();
 
     // Authenticate
     let auth_msg = json!({ "type": "AUTH", "token": "test-token" });
-    write.send(Message::Text(auth_msg.to_string().into())).await.unwrap();
+    write
+        .send(Message::Text(auth_msg.to_string()))
+        .await
+        .unwrap();
 
     // Wait for any auth response or just give a moment
     tokio::time::sleep(Duration::from_millis(50)).await;
@@ -131,7 +129,10 @@ async fn ws_subscribe(
         "sub_id": sub_id,
         "topic": topic,
     });
-    write.send(Message::Text(sub_msg.to_string().into())).await.unwrap();
+    write
+        .send(Message::Text(sub_msg.to_string()))
+        .await
+        .unwrap();
     tokio::time::sleep(Duration::from_millis(30)).await;
 }
 
@@ -145,7 +146,7 @@ async fn test_health_endpoint() {
 
     let client = reqwest::Client::new();
     let resp = client
-        .get(format!("http://{}/v1/health", addr))
+        .get(format!("http://{addr}/v1/health"))
         .send()
         .await
         .unwrap();
@@ -161,7 +162,7 @@ async fn test_publish_event_via_rest() {
 
     let client = reqwest::Client::new();
     let resp = client
-        .post(format!("http://{}/v1/publish", addr))
+        .post(format!("http://{addr}/v1/publish"))
         .json(&json!({
             "topic": "test/orders/created",
             "event_type": "created",
@@ -183,7 +184,7 @@ async fn test_publish_batch_via_rest() {
 
     let client = reqwest::Client::new();
     let resp = client
-        .post(format!("http://{}/v1/publish/batch", addr))
+        .post(format!("http://{addr}/v1/publish/batch"))
         .json(&json!({
             "events": [
                 { "topic": "test/a", "event_type": "created", "payload": {"v": 1} },
@@ -208,7 +209,7 @@ async fn test_publish_empty_topic_rejected() {
 
     let client = reqwest::Client::new();
     let resp = client
-        .post(format!("http://{}/v1/publish", addr))
+        .post(format!("http://{addr}/v1/publish"))
         .json(&json!({
             "topic": "",
             "event_type": "created",
@@ -225,13 +226,16 @@ async fn test_publish_empty_topic_rejected() {
 async fn test_websocket_connect_and_auth() {
     let (addr, _pub, _bus) = start_test_server().await;
 
-    let url = format!("ws://{}/ws", addr);
+    let url = format!("ws://{addr}/ws");
     let (ws_stream, _) = connect_async(&url).await.expect("Failed to connect");
     let (mut write, _read) = ws_stream.split();
 
     // Send auth
     let auth_msg = json!({ "type": "AUTH", "token": "hello" });
-    write.send(Message::Text(auth_msg.to_string().into())).await.unwrap();
+    write
+        .send(Message::Text(auth_msg.to_string()))
+        .await
+        .unwrap();
 
     // If we get here without error, auth succeeded (NoAuth mode)
     tokio::time::sleep(Duration::from_millis(50)).await;
@@ -270,7 +274,9 @@ async fn test_websocket_subscribe_and_receive_event() {
     })
     .await;
 
-    let event_msg = received.expect("Timeout waiting for event").expect("No event received");
+    let event_msg = received
+        .expect("Timeout waiting for event")
+        .expect("No event received");
     assert_eq!(event_msg["type"], "EVENT");
 
     let payload = &event_msg["event"];
@@ -290,7 +296,10 @@ async fn test_websocket_unsubscribe_stops_delivery() {
 
     // Unsubscribe
     let unsub_msg = json!({ "type": "UNSUBSCRIBE", "sub_id": "sub-unsub" });
-    write.send(Message::Text(unsub_msg.to_string().into())).await.unwrap();
+    write
+        .send(Message::Text(unsub_msg.to_string()))
+        .await
+        .unwrap();
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     // Publish after unsubscribe
@@ -315,7 +324,10 @@ async fn test_websocket_unsubscribe_stops_delivery() {
     })
     .await;
 
-    assert!(received.is_err(), "Should not have received event after unsubscribe");
+    assert!(
+        received.is_err(),
+        "Should not have received event after unsubscribe"
+    );
 }
 
 #[tokio::test]
@@ -363,8 +375,14 @@ async fn test_multiple_subscribers_same_topic() {
     })
     .await;
 
-    assert!(recv1.unwrap_or(false), "Client 1 should have received event");
-    assert!(recv2.unwrap_or(false), "Client 2 should have received event");
+    assert!(
+        recv1.unwrap_or(false),
+        "Client 1 should have received event"
+    );
+    assert!(
+        recv2.unwrap_or(false),
+        "Client 2 should have received event"
+    );
 }
 
 #[tokio::test]
@@ -408,7 +426,10 @@ async fn test_prefix_pattern_subscription() {
     })
     .await;
 
-    assert!(received.unwrap_or(0) >= 1, "Should have received events from prefix subscription");
+    assert!(
+        received.unwrap_or(0) >= 1,
+        "Should have received events from prefix subscription"
+    );
 }
 
 #[tokio::test]
@@ -424,7 +445,7 @@ async fn test_publish_via_rest_delivered_to_websocket() {
     // Publish via REST
     let client = reqwest::Client::new();
     let resp = client
-        .post(format!("http://{}/v1/publish", addr))
+        .post(format!("http://{addr}/v1/publish"))
         .json(&json!({
             "topic": "api/events",
             "event_type": "rest_published",
@@ -496,15 +517,21 @@ async fn test_subscription_registry_operations() {
         Bytes::from(r#"{"status":"pending"}"#),
     );
     let matches = registry.lookup_matches(&sub_event);
-    assert!(!matches.is_empty(), "Should find subscription for orders/created");
+    assert!(
+        !matches.is_empty(),
+        "Should find subscription for orders/created"
+    );
 
     let sub_event2 = EventEnvelope::new(
         TopicPath::new("users/created"),
         "created",
-        Bytes::from(r#"{}"#),
+        Bytes::from(r"{}"),
     );
     let matches2 = registry.lookup_matches(&sub_event2);
-    assert!(matches2.is_empty(), "Should NOT find subscription for users/created");
+    assert!(
+        matches2.is_empty(),
+        "Should NOT find subscription for users/created"
+    );
 
     // Verify remove
     registry.unsubscribe(ConnectionId(1), "test-sub");
@@ -514,13 +541,18 @@ async fn test_subscription_registry_operations() {
 
 #[tokio::test]
 async fn test_filter_evaluation() {
-    use realtime_core::{ConnectionId, SubConfig, Subscription, SubscriptionId, TopicPattern, filter::FilterExpr};
     use realtime_core::filter::{FieldPath, FilterValue};
+    use realtime_core::{
+        filter::FilterExpr, ConnectionId, SubConfig, Subscription, SubscriptionId, TopicPattern,
+    };
     use smol_str::SmolStr;
 
     let registry = SubscriptionRegistry::new();
 
-    let filter = FilterExpr::Eq(FieldPath::new("event_type"), FilterValue::String("created".into()));
+    let filter = FilterExpr::Eq(
+        FieldPath::new("event_type"),
+        FilterValue::String("created".into()),
+    );
 
     let sub = Subscription {
         sub_id: SubscriptionId(SmolStr::new("filtered-sub")),
@@ -548,13 +580,16 @@ async fn test_filter_evaluation() {
         Bytes::from(r#"{"status":"pending"}"#),
     );
     let matches_no = registry.lookup_matches(&event_no_match);
-    assert!(matches_no.is_empty(), "Filter should reject event with wrong event_type");
+    assert!(
+        matches_no.is_empty(),
+        "Filter should reject event with wrong event_type"
+    );
 }
 
 #[tokio::test]
 async fn test_connection_manager_lifecycle() {
-    use realtime_core::{ConnectionId, ConnectionMeta, OverflowPolicy};
     use chrono::Utc;
+    use realtime_core::{ConnectionId, ConnectionMeta, OverflowPolicy};
 
     let mgr = ConnectionManager::new(64);
 
@@ -608,13 +643,13 @@ async fn test_event_envelope_serialization() {
 
 #[tokio::test]
 async fn test_jwt_auth_provider() {
+    use jsonwebtoken::{encode, EncodingKey, Header};
     use realtime_auth::{JwtAuthProvider, JwtConfig};
     use realtime_core::{AuthContext, AuthProvider};
-    use jsonwebtoken::{encode, EncodingKey, Header};
 
     let secret = "test-secret-key-for-jwt-testing-2024";
     let config = JwtConfig::hmac(secret);
-    let provider = JwtAuthProvider::new(config);
+    let provider = JwtAuthProvider::new(&config).unwrap();
 
     // Create a valid JWT token
     let claims = json!({
@@ -638,7 +673,11 @@ async fn test_jwt_auth_provider() {
     };
 
     let result = provider.verify(&token, &ctx).await;
-    assert!(result.is_ok(), "Valid JWT should verify: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Valid JWT should verify: {:?}",
+        result.err()
+    );
 
     let auth_claims = result.unwrap();
     assert_eq!(auth_claims.sub, "user-123");
@@ -650,7 +689,7 @@ async fn test_jwt_auth_rejects_invalid_token() {
     use realtime_core::{AuthContext, AuthProvider};
 
     let config = JwtConfig::hmac("correct-secret");
-    let provider = JwtAuthProvider::new(config);
+    let provider = JwtAuthProvider::new(&config).unwrap();
 
     let ctx = AuthContext {
         peer_addr: "127.0.0.1:0".parse().unwrap(),
@@ -701,7 +740,7 @@ async fn test_high_throughput_publish() {
         let event = EventEnvelope::new(
             TopicPath::new("perf/test"),
             "throughput",
-            Bytes::from(format!(r#"{{"seq":{}}}"#, i)),
+            Bytes::from(format!(r#"{{"seq":{i}}}"#)),
         );
         publisher.publish("perf/test", &event).await.unwrap();
     }
@@ -729,14 +768,12 @@ async fn test_high_throughput_publish() {
         received,
         event_count,
         elapsed,
-        received as f64 / elapsed.as_secs_f64()
+        f64::from(received) / elapsed.as_secs_f64()
     );
 
     assert!(
         received >= event_count / 2,
-        "Should have received at least half of {} events, got {}",
-        event_count,
-        received
+        "Should have received at least half of {event_count} events, got {received}"
     );
 }
 
@@ -749,7 +786,7 @@ async fn test_websocket_ping() {
 
     // Send ping
     let ping_msg = json!({ "type": "PING" });
-    let result = write.send(Message::Text(ping_msg.to_string().into())).await;
+    let result = write.send(Message::Text(ping_msg.to_string())).await;
     assert!(result.is_ok(), "Ping should succeed");
 }
 
@@ -768,7 +805,10 @@ async fn test_subscribe_batch() {
             { "sub_id": "batch-2", "topic": "topic-b" },
         ]
     });
-    write.send(Message::Text(batch_msg.to_string().into())).await.unwrap();
+    write
+        .send(Message::Text(batch_msg.to_string()))
+        .await
+        .unwrap();
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     // Publish to topic-b
@@ -790,7 +830,10 @@ async fn test_subscribe_batch() {
     })
     .await;
 
-    assert!(received.unwrap_or(false), "Should receive event from batch subscription");
+    assert!(
+        received.unwrap_or(false),
+        "Should receive event from batch subscription"
+    );
 }
 
 #[tokio::test]
@@ -820,7 +863,7 @@ async fn test_multiple_concurrent_connections() {
             let ws = connect_and_auth(&addr).await;
             let (mut write, mut read) = ws.split();
 
-            ws_subscribe(&mut write, &format!("sub-{}", i), "concurrent/test").await;
+            ws_subscribe(&mut write, &format!("sub-{i}"), "concurrent/test").await;
 
             // Wait for an event
             let received = tokio::time::timeout(Duration::from_secs(5), async {
@@ -859,11 +902,9 @@ async fn test_multiple_concurrent_connections() {
         }
     }
 
-    println!("Concurrent test: {}/{} clients received event", received_count, num_clients);
+    println!("Concurrent test: {received_count}/{num_clients} clients received event");
     assert!(
         received_count >= num_clients / 2,
-        "At least half of {} clients should receive event, got {}",
-        num_clients,
-        received_count
+        "At least half of {num_clients} clients should receive event, got {received_count}"
     );
 }

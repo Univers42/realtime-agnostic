@@ -46,16 +46,15 @@ Most realtime systems (Supabase Realtime, Firebase, Hasura) are **tightly couple
 
 ### What It Does
 
-```
-┌─────────────────────┐         ┌─────────────────────────┐         ┌─────────────────┐
-│  PostgreSQL (CDC)   │───┐     │                         │     ┌──▶│  Browser Tab 1  │
-│  MongoDB (Change    │───┤     │   Realtime-Agnostic     │     │   └─────────────────┘
-│    Streams)         │   ├────▶│   Event Routing Engine  │─────┤   ┌─────────────────┐
-│  REST API (POST)    │───┤     │                         │     ├──▶│  Browser Tab 2  │
-│  WebSocket PUBLISH  │───┘     │   Topic Matching +      │     │   └─────────────────┘
-│  Any Future Source  │         │   Filter Evaluation +   │     │   ┌─────────────────┐
-│                     │         │   Fan-Out to N Clients  │     └──▶│  Mobile App     │
-└─────────────────────┘         └─────────────────────────┘         └─────────────────┘
+```mermaid
+graph LR
+    PG[(PostgreSQL CDC)] -->|Events| RA[Realtime-Agnostic Engine]
+    Mongo[(MongoDB Change Streams)] -->|Events| RA
+    REST[REST API POST] -->|Events| RA
+    WS_Pub[WebSocket PUBLISH] -->|Events| RA
+    RA -->|Topic Matching & Filter| B1[Browser Tab 1]
+    RA -->|Topic Matching & Filter| B2[Browser Tab 2]
+    RA -->|Topic Matching & Filter| Mobile[Mobile App]
 ```
 
 ---
@@ -64,18 +63,26 @@ Most realtime systems (Supabase Realtime, Firebase, Hasura) are **tightly couple
 
 ### The Traditional Approach (Coupled)
 
-```
-PostgreSQL WAL → PG-specific realtime layer → Clients
+```mermaid
+graph LR
+    PG[(PostgreSQL LISTEN/NOTIFY)] -.-> Bus
+    Mongo[(MongoDB Change Streams)] -.-> Bus
+    REST[REST API publish] -.-> Bus
+    Bus((Unified Event Bus)) --> Router[Topic Router]
+    Router --> Clients[Clients]
 ```
 
 If you later add MongoDB for chat storage, you need an entirely different realtime stack. They don't share protocols, subscription models, or client libraries.
 
 ### The Realtime-Agnostic Approach (Decoupled)
 
-```
-PostgreSQL LISTEN/NOTIFY ─┐
-MongoDB Change Streams ───┼─→ Unified Event Bus → Topic Router → Clients
-REST API publish ─────────┘
+```mermaid
+graph LR
+    PG[(PostgreSQL LISTEN/NOTIFY)] -.-> Bus
+    Mongo[(MongoDB Change Streams)] -.-> Bus
+    REST[REST API publish] -.-> Bus
+    Bus((Unified Event Bus)) --> Router[Topic Router]
+    Router --> Clients[Clients]
 ```
 
 All data sources produce the **same `EventEnvelope`** structure. All clients use the **same WebSocket protocol**. The router doesn't know or care what database generated the event.
@@ -108,65 +115,15 @@ The engine **never imports** `tokio-postgres` or `mongodb`. It only sees `Box<dy
 
 ## 3. High-Level Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        CLIENT TIER                                  │
-│   Browsers / Mobile / Server SDKs                                   │
-│   Protocol: WebSocket (JSON frames)                                 │
-└──────────────────────────┬──────────────────────────────────────────┘
-                           │ Millions of long-lived WS connections
-┌──────────────────────────▼──────────────────────────────────────────┐
-│                       GATEWAY TIER                                  │
-│                                                                     │
-│   ┌──────────────┐  ┌──────────────┐  ┌───────────────────────┐    │
-│   │  WS Handler  │  │ REST API     │  │  Connection Manager   │    │
-│   │  (axum)      │  │ /v1/publish  │  │  DashMap<ConnId,State>│    │
-│   └──────┬───────┘  └──────┬───────┘  └───────────┬───────────┘    │
-│          │                 │                      │                 │
-│   ┌──────▼─────────────────▼──────────────────────▼───────────┐    │
-│   │              Fan-Out Worker Pool                          │    │
-│   │   N tokio tasks pulling from dispatch channel             │    │
-│   │   Each writes to per-connection bounded send queue        │    │
-│   └──────────────────────────┬────────────────────────────────┘    │
-└──────────────────────────────┼────────────────────────────────────-─┘
-                               │
-┌──────────────────────────────▼──────────────────────────────────────┐
-│                        CORE ENGINE                                  │
-│                                                                     │
-│   ┌─────────────────────┐  ┌─────────────────┐                     │
-│   │  Subscription       │  │  Sequence        │                     │
-│   │  Registry           │  │  Generator       │                     │
-│   │  DashMap + Trie     │  │  AtomicU64/topic │                     │
-│   └──────────┬──────────┘  └────────┬─────────┘                     │
-│              │                      │                               │
-│   ┌──────────▼──────────────────────▼─────────┐                     │
-│   │          Event Router                     │                     │
-│   │  Assign sequence → Match subs → Dispatch  │                     │
-│   └──────────────────────┬────────────────────┘                     │
-│                          │                                          │
-│   ┌──────────────────────▼────────────────────┐                     │
-│   │         Filter Index (Roaring Bitmaps)    │                     │
-│   │  topic → field → value → bitmap(conn_ids) │                     │
-│   └───────────────────────────────────────────┘                     │
-└──────────────────────────────┬──────────────────────────────────────┘
-                               │
-┌──────────────────────────────▼──────────────────────────────────────┐
-│                        EVENT BUS                                    │
-│   InProcessBus (tokio::broadcast)                                   │
-│   Capacity: 65,536 messages                                         │
-│   Replaceable with Redis Streams, NATS, Kafka, etc.                 │
-└──────────────────────────────┬──────────────────────────────────────┘
-                               │
-┌──────────────────────────────▼──────────────────────────────────────┐
-│                    DATABASE PRODUCERS                                │
-│                                                                     │
-│   ┌──────────────────┐  ┌──────────────────┐  ┌───────────────┐    │
-│   │ PostgreSQL CDC   │  │ MongoDB CDC      │  │ Future: MySQL │    │
-│   │ LISTEN/NOTIFY    │  │ Change Streams   │  │ DynamoDB etc. │    │
-│   └──────────────────┘  └──────────────────┘  └───────────────┘    │
-│                                                                     │
-│   All produce EventEnvelope → publish to EventBus                   │
-└─────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph LR
+    PG[(PostgreSQL CDC)] -->|Events| RA[Realtime-Agnostic Engine]
+    Mongo[(MongoDB Change Streams)] -->|Events| RA
+    REST[REST API POST] -->|Events| RA
+    WS_Pub[WebSocket PUBLISH] -->|Events| RA
+    RA -->|Topic Matching & Filter| B1[Browser Tab 1]
+    RA -->|Topic Matching & Filter| B2[Browser Tab 2]
+    RA -->|Topic Matching & Filter| Mobile[Mobile App]
 ```
 
 ### The Pipeline

@@ -1,15 +1,3 @@
-/* ************************************************************************** */
-/*                                                                            */
-/*                                                        :::      ::::::::   */
-/*   subscription.rs                                    :+:      :+:    :+:   */
-/*                                                    +:+ +:+         +:+     */
-/*   By: dlesieur <dlesieur@student.42.fr>          +#+  +:+       +#+        */
-/*                                                +#+#+#+#+#+   +#+           */
-/*   Created: 2026/04/07 11:11:59 by dlesieur          #+#    #+#             */
-/*   Updated: 2026/04/07 11:23:06 by dlesieur         ###   ########.fr       */
-/*                                                                            */
-/* ************************************************************************** */
-
 //! Subscription handle for the Rust client SDK.
 //!
 //! [`ClientSubscription`] wraps an `mpsc::Receiver<EventPayload>` and provides
@@ -35,7 +23,8 @@ impl ClientSubscription {
     /// * `sub_id` — The subscription identifier.
     /// * `topic` — The subscribed topic.
     /// * `event_rx` — The channel receiver for incoming events.
-    pub fn new(
+    #[must_use]
+    pub const fn new(
         sub_id: String,
         topic: String,
         event_rx: mpsc::Receiver<EventPayload>,

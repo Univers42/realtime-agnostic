@@ -1,15 +1,3 @@
-/* ************************************************************************** */
-/*                                                                            */
-/*                                                        :::      ::::::::   */
-/*   main.rs                                            :+:      :+:    :+:   */
-/*                                                    +:+ +:+         +:+     */
-/*   By: dlesieur <dlesieur@student.42.fr>          +#+  +:+       +#+        */
-/*                                                +#+#+#+#+#+   +#+           */
-/*   Created: 2026/04/07 11:13:44 by dlesieur          #+#    #+#             */
-/*   Updated: 2026/04/07 11:19:25 by dlesieur         ###   ########.fr       */
-/*                                                                            */
-/* ************************************************************************** */
-
 //! Binary entry point for the realtime server.
 //!
 //! Initialises tracing, loads [`ServerConfig`](realtime_server::config::ServerConfig)
@@ -27,11 +15,11 @@
 //! | `REALTIME_MONGO_URI` | MongoDB connection URI |
 //! | `RUST_LOG` | tracing filter (e.g. `info,realtime_engine=debug`) |
 
+use realtime_server::config::{AuthConfig, DatabaseConfig, ServerConfig};
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Initialize tracing/logging
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
@@ -39,7 +27,6 @@ async fn main() -> anyhow::Result<()> {
         .with_target(true)
         .init();
 
-    // Load configuration
     let config = load_config()?;
 
     tracing::info!("Starting Realtime Engine v{}", env!("CARGO_PKG_VERSION"));
@@ -55,25 +42,24 @@ async fn main() -> anyhow::Result<()> {
     realtime_server::server::run(config).await
 }
 
-/// Load server configuration from environment.
-///
-/// Priority:
-/// 1. JSON file at `$REALTIME_CONFIG`
-/// 2. Individual `REALTIME_*` env vars merged onto defaults
-///
-/// Database producers (PostgreSQL, MongoDB) are added when their
-/// respective connection-string env vars are set.
-fn load_config() -> anyhow::Result<realtime_server::config::ServerConfig> {
-    // Check for config file path in env
-    if let Ok(config_path) = std::env::var("REALTIME_CONFIG") {
-        let content = std::fs::read_to_string(&config_path)?;
-        let config: realtime_server::config::ServerConfig = serde_json::from_str(&content)?;
-        return Ok(config);
+fn load_config() -> anyhow::Result<ServerConfig> {
+    if let Ok(path) = std::env::var("REALTIME_CONFIG") {
+        return load_config_from_file(&path);
     }
+    let mut config = load_config_from_env()?;
+    add_pg_config(&mut config);
+    add_mongo_config(&mut config);
+    Ok(config)
+}
 
-    // Check for individual env vars
-    let mut config = realtime_server::config::ServerConfig::default();
+fn load_config_from_file(path: &str) -> anyhow::Result<ServerConfig> {
+    let content = std::fs::read_to_string(path)?;
+    let config: ServerConfig = serde_json::from_str(&content)?;
+    Ok(config)
+}
 
+fn load_config_from_env() -> anyhow::Result<ServerConfig> {
+    let mut config = ServerConfig::default();
     if let Ok(host) = std::env::var("REALTIME_HOST") {
         config.host = host;
     }
@@ -81,56 +67,50 @@ fn load_config() -> anyhow::Result<realtime_server::config::ServerConfig> {
         config.port = port.parse()?;
     }
     if let Ok(secret) = std::env::var("REALTIME_JWT_SECRET") {
-        config.auth = realtime_server::config::AuthConfig::Jwt {
+        config.auth = AuthConfig::Jwt {
             secret,
             issuer: std::env::var("REALTIME_JWT_ISSUER").ok(),
             audience: std::env::var("REALTIME_JWT_AUDIENCE").ok(),
         };
     }
-
-    // ─── PostgreSQL CDC from env ────────────────────────────────────
-    if let Ok(pg_url) = std::env::var("REALTIME_PG_URL") {
-        let channel = std::env::var("REALTIME_PG_CHANNEL")
-            .unwrap_or_else(|_| "realtime_events".to_string());
-        let topic_prefix = std::env::var("REALTIME_PG_PREFIX")
-            .unwrap_or_else(|_| "pg".to_string());
-
-        config.databases.push(
-            realtime_server::config::DatabaseConfig {
-                adapter: "postgresql".to_string(),
-                config: serde_json::json!({
-                    "connection_string": pg_url,
-                    "channel": channel,
-                    "tables": [],
-                    "topic_prefix": topic_prefix,
-                    "poll_interval_ms": 100
-                }),
-            },
-        );
-        tracing::info!("PostgreSQL CDC configured from env");
-    }
-
-    // ─── MongoDB Change Streams from env ────────────────────────────
-    if let Ok(mongo_uri) = std::env::var("REALTIME_MONGO_URI") {
-        let database = std::env::var("REALTIME_MONGO_DB")
-            .unwrap_or_else(|_| "syncspace".to_string());
-        let topic_prefix = std::env::var("REALTIME_MONGO_PREFIX")
-            .unwrap_or_else(|_| "mongo".to_string());
-
-        config.databases.push(
-            realtime_server::config::DatabaseConfig {
-                adapter: "mongodb".to_string(),
-                config: serde_json::json!({
-                    "uri": mongo_uri,
-                    "database": database,
-                    "collections": [],
-                    "topic_prefix": topic_prefix,
-                    "full_document": "updateLookup"
-                }),
-            },
-        );
-        tracing::info!("MongoDB Change Streams configured from env");
-    }
-
     Ok(config)
+}
+
+fn add_pg_config(config: &mut ServerConfig) {
+    let Ok(pg_url) = std::env::var("REALTIME_PG_URL") else {
+        return;
+    };
+    let channel =
+        std::env::var("REALTIME_PG_CHANNEL").unwrap_or_else(|_| "realtime_events".to_string());
+    let prefix = std::env::var("REALTIME_PG_PREFIX").unwrap_or_else(|_| "pg".to_string());
+    config.databases.push(DatabaseConfig {
+        adapter: "postgresql".to_string(),
+        config: serde_json::json!({
+            "connection_string": pg_url,
+            "channel": channel,
+            "tables": [],
+            "topic_prefix": prefix,
+            "poll_interval_ms": 100
+        }),
+    });
+    tracing::info!("PostgreSQL CDC configured from env");
+}
+
+fn add_mongo_config(config: &mut ServerConfig) {
+    let Ok(uri) = std::env::var("REALTIME_MONGO_URI") else {
+        return;
+    };
+    let database = std::env::var("REALTIME_MONGO_DB").unwrap_or_else(|_| "syncspace".to_string());
+    let prefix = std::env::var("REALTIME_MONGO_PREFIX").unwrap_or_else(|_| "mongo".to_string());
+    config.databases.push(DatabaseConfig {
+        adapter: "mongodb".to_string(),
+        config: serde_json::json!({
+            "uri": uri,
+            "database": database,
+            "collections": [],
+            "topic_prefix": prefix,
+            "full_document": "updateLookup"
+        }),
+    });
+    tracing::info!("MongoDB Change Streams configured from env");
 }

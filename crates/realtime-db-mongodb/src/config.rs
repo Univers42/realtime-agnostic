@@ -1,20 +1,8 @@
-/* ************************************************************************** */
-/*                                                                            */
-/*                                                        :::      ::::::::   */
-/*   config.rs                                          :+:      :+:    :+:   */
-/*                                                    +:+ +:+         +:+     */
-/*   By: dlesieur <dlesieur@student.42.fr>          +#+  +:+       +#+        */
-/*                                                +#+#+#+#+#+   +#+           */
-/*   Created: 2026/04/07 11:12:38 by dlesieur          #+#    #+#             */
-/*   Updated: 2026/04/07 11:17:52 by dlesieur         ###   ########.fr       */
-/*                                                                            */
-/* ************************************************************************** */
-
-//! Configuration types for the MongoDB change stream producer.
+//! Configuration types for the `MongoDB` change stream producer.
 
 use serde::{Deserialize, Serialize};
 
-/// MongoDB change stream configuration.
+/// `MongoDB` change stream configuration.
 ///
 /// ## JSON example
 ///
@@ -29,7 +17,7 @@ use serde::{Deserialize, Serialize};
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MongoConfig {
-    /// MongoDB connection URI.
+    /// `MongoDB` connection URI.
     pub uri: String,
 
     /// Database name to watch.

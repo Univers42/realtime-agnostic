@@ -1,19 +1,9 @@
-/* ************************************************************************** */
-/*                                                                            */
-/*                                                        :::      ::::::::   */
-/*   noauth.rs                                          :+:      :+:    :+:   */
-/*                                                    +:+ +:+         +:+     */
-/*   By: dlesieur <dlesieur@student.42.fr>          +#+  +:+       +#+        */
-/*                                                +#+#+#+#+#+   +#+           */
-/*   Created: 2026/04/07 11:12:14 by dlesieur          #+#    #+#             */
-/*   Updated: 2026/04/07 11:17:52 by dlesieur         ###   ########.fr       */
-/*                                                                            */
-/* ************************************************************************** */
-
 //! No-authentication provider for development and testing.
 //!
 //! Accepts **any** token and grants full access to all namespaces.
 //! **Never use this in production.**
+
+use std::collections::HashMap;
 
 use async_trait::async_trait;
 use realtime_core::{AuthClaims, AuthContext, AuthProvider, Result, TopicPath, TopicPattern};
@@ -27,7 +17,8 @@ pub struct NoAuthProvider;
 
 impl NoAuthProvider {
     /// Create a new no-auth provider.
-    pub fn new() -> Self {
+    #[must_use]
+    pub const fn new() -> Self {
         Self
     }
 }
@@ -51,7 +42,7 @@ impl AuthProvider for NoAuthProvider {
             namespaces: vec!["*".to_string()],
             can_publish: true,
             can_subscribe: true,
-            metadata: Default::default(),
+            metadata: HashMap::default(),
         })
     }
 
@@ -64,10 +55,10 @@ impl AuthProvider for NoAuthProvider {
     }
 }
 
+#[allow(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
     use super::*;
-    
 
     #[tokio::test]
     async fn test_noauth_accepts_everything() {

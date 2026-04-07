@@ -1,31 +1,9 @@
-/* ************************************************************************** */
-/*                                                                            */
-/*                                                        :::      ::::::::   */
-/*   server.rs                                          :+:      :+:    :+:   */
-/*                                                    +:+ +:+         +:+     */
-/*   By: dlesieur <dlesieur@student.42.fr>          +#+  +:+       +#+        */
-/*                                                +#+#+#+#+#+   +#+           */
-/*   Created: 2026/04/07 11:13:47 by dlesieur          #+#    #+#             */
-/*   Updated: 2026/04/07 11:23:06 by dlesieur         ###   ########.fr       */
-/*                                                                            */
-/* ************************************************************************** */
-
 //! Server assembly — wires every crate together into a running HTTP/WS server.
 //!
 //! This module is the **composition root** of the system. It reads
 //! [`ServerConfig`], instantiates the event bus,
 //! auth provider, router, fan-out pool, database producers, and HTTP routes,
 //! then binds a TCP listener.
-//!
-//! ## Start-up sequence
-//!
-//! 1. Build [`EventBus`] + publisher
-//! 2. Build [`AuthProvider`]
-//! 3. Build [`SubscriptionRegistry`], [`SequenceGenerator`], [`ConnectionManager`]
-//! 4. Spawn [`FanOutWorkerPool`]
-//! 5. Build [`EventRouter`] and connect it to the bus subscriber
-//! 6. For each database entry in config, create a CDC producer via [`ProducerRegistry`]
-//! 7. Build Axum router and start listening
 
 use std::sync::Arc;
 
@@ -37,10 +15,8 @@ use realtime_auth::NoAuthProvider;
 use realtime_bus_inprocess::InProcessBus;
 use realtime_core::{AuthProvider, DatabaseProducer, EventBus, EventBusPublisher};
 use realtime_engine::{
+    registry::SubscriptionRegistry, router::EventRouter, sequence::SequenceGenerator,
     ProducerRegistry,
-    registry::SubscriptionRegistry,
-    router::EventRouter,
-    sequence::SequenceGenerator,
 };
 use realtime_gateway::{
     connection::ConnectionManager,
@@ -48,37 +24,158 @@ use realtime_gateway::{
     rest_api,
     ws_handler::{self, AppState},
 };
+use tokio::sync::mpsc;
 use tower_http::cors::CorsLayer;
 use tracing::{error, info};
 
 use crate::config::{AuthConfig, EventBusConfig, ServerConfig};
 
+/// Build and run the full realtime server.
+///
+/// Assembles all components from the given configuration and blocks
+/// until the server is shut down.
+///
+/// # Errors
+///
+/// Returns an error if any component fails to initialize or the server
+/// cannot bind to the configured address.
+pub async fn run(config: ServerConfig) -> anyhow::Result<()> {
+    let bus = build_event_bus(&config);
+    let publisher: Arc<dyn EventBusPublisher> = Arc::from(bus.publisher().await?);
+    let auth_provider = build_auth_provider(&config)?;
+    let (registry, sequence_gen, conn_manager) = build_core(&config);
+    let dispatch_tx = build_fanout(&conn_manager, config.performance.fanout_workers);
+    let router = wire_router(&registry, &sequence_gen, dispatch_tx);
+    spawn_bus_loop(&bus, &router).await?;
+    start_producers(&config, &publisher);
+    let app = build_http_router(conn_manager, registry, auth_provider, publisher);
+
+    let addr = format!("{}:{}", config.host, config.port);
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    info!("Realtime server listening on {}", addr);
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(crate::signal::shutdown_signal())
+        .await?;
+
+    bus.shutdown().await.ok();
+    Ok(())
+}
+
+fn build_event_bus(config: &ServerConfig) -> Arc<dyn EventBus> {
+    let bus: Arc<dyn EventBus> = match &config.event_bus {
+        EventBusConfig::InProcess { capacity } => Arc::new(InProcessBus::new(*capacity)),
+    };
+    bus
+}
+
+fn build_auth_provider(config: &ServerConfig) -> anyhow::Result<Arc<dyn AuthProvider>> {
+    match &config.auth {
+        AuthConfig::NoAuth => Ok(Arc::new(NoAuthProvider::new())),
+        AuthConfig::Jwt {
+            secret,
+            issuer,
+            audience,
+        } => {
+            let mut jwt = realtime_auth::JwtConfig::hmac(secret.clone());
+            jwt.issuer.clone_from(issuer);
+            jwt.audience.clone_from(audience);
+            Ok(Arc::new(realtime_auth::JwtAuthProvider::new(&jwt)?))
+        }
+    }
+}
+
+type CoreComponents = (
+    Arc<SubscriptionRegistry>,
+    Arc<SequenceGenerator>,
+    Arc<ConnectionManager>,
+);
+
+fn build_core(config: &ServerConfig) -> CoreComponents {
+    let registry = Arc::new(SubscriptionRegistry::new());
+    let sequence_gen = Arc::new(SequenceGenerator::new());
+    let conn_mgr = Arc::new(ConnectionManager::new(
+        config.performance.send_queue_capacity,
+    ));
+    (registry, sequence_gen, conn_mgr)
+}
+
+fn build_fanout(
+    conn_manager: &Arc<ConnectionManager>,
+    workers: usize,
+) -> mpsc::Sender<realtime_engine::router::LocalDispatch> {
+    let pool = FanOutWorkerPool::new(Arc::clone(conn_manager), workers);
+    pool.start()
+}
+
+fn wire_router(
+    registry: &Arc<SubscriptionRegistry>,
+    seq_gen: &Arc<SequenceGenerator>,
+    dispatch_tx: mpsc::Sender<realtime_engine::router::LocalDispatch>,
+) -> Arc<EventRouter> {
+    Arc::new(EventRouter::new(
+        Arc::clone(registry),
+        Arc::clone(seq_gen),
+        dispatch_tx,
+    ))
+}
+
+async fn spawn_bus_loop(bus: &Arc<dyn EventBus>, router: &Arc<EventRouter>) -> anyhow::Result<()> {
+    let subscriber = bus.subscriber("*").await?;
+    let r = Arc::clone(router);
+    tokio::spawn(async move { r.run_with_subscriber(subscriber).await });
+    Ok(())
+}
+
+fn start_producers(config: &ServerConfig, publisher: &Arc<dyn EventBusPublisher>) {
+    let registry = default_producer_registry();
+    if let Ok(adapters) = registry.adapters() {
+        info!("Available adapters: {:?}", adapters);
+    }
+    for db_cfg in &config.databases {
+        match registry.create_producer(&db_cfg.adapter, db_cfg.config.clone()) {
+            Ok(producer) => {
+                let name = db_cfg.adapter.clone();
+                spawn_producer_task(producer, Arc::clone(publisher), name);
+            }
+            Err(e) => error!(adapter = %db_cfg.adapter, "Failed to create producer: {}", e),
+        }
+    }
+}
+
+fn build_http_router(
+    conn_manager: Arc<ConnectionManager>,
+    registry: Arc<SubscriptionRegistry>,
+    auth_provider: Arc<dyn AuthProvider>,
+    bus_publisher: Arc<dyn EventBusPublisher>,
+) -> Router {
+    let state = AppState {
+        conn_manager,
+        registry,
+        auth_provider,
+        bus_publisher,
+    };
+    let static_dir =
+        std::env::var("REALTIME_STATIC_DIR").unwrap_or_else(|_| "sandbox/static".into());
+    Router::new()
+        .route("/ws", get(ws_handler::ws_upgrade))
+        .route("/v1/publish", post(rest_api::publish_event))
+        .route("/v1/publish/batch", post(rest_api::publish_batch))
+        .route("/v1/health", get(rest_api::health_check))
+        .fallback_service(tower_http::services::ServeDir::new(static_dir))
+        .layer(CorsLayer::permissive())
+        .with_state(state)
+}
+
 /// Build the default [`ProducerRegistry`] with built-in adapters.
-///
-/// Registers PostgreSQL and MongoDB factories so that the config-driven
-/// `databases` array can reference `"postgresql"` or `"mongodb"` by name.
-///
-/// To add a new adapter, call `registry.register(Box::new(YourFactory))`.
+#[must_use]
 pub fn default_producer_registry() -> ProducerRegistry {
     let registry = ProducerRegistry::new();
-    registry.register(Box::new(realtime_db_postgres::PostgresFactory));
-    registry.register(Box::new(realtime_db_mongodb::MongoFactory));
-    // To add a new adapter:
-    // registry.register(Box::new(realtime_db_mysql::MysqlFactory));
-    // registry.register(Box::new(realtime_db_redis::RedisFactory));
+    let _ = registry.register(Box::new(realtime_db_postgres::PostgresFactory));
+    let _ = registry.register(Box::new(realtime_db_mongodb::MongoFactory));
     registry
 }
 
-/// Spawn a database CDC producer as a background task.
-///
-/// Calls [`DatabaseProducer::start()`] and forwards each emitted
-/// [`EventEnvelope`] to the event bus via `bus_pub.publish()`.
-///
-/// # Arguments
-///
-/// * `producer` — A boxed producer (PostgreSQL, MongoDB, etc.).
-/// * `bus_pub` — The shared event bus publisher.
-/// * `adapter_name` — Human-readable adapter name for log messages.
 fn spawn_producer_task(
     producer: Box<dyn DatabaseProducer>,
     bus_pub: Arc<dyn EventBusPublisher>,
@@ -96,122 +193,4 @@ fn spawn_producer_task(
             Err(e) => error!(adapter = %adapter_name, "Failed to start producer: {}", e),
         }
     });
-}
-
-/// Build and run the full realtime server.
-///
-/// This is the main entry point for the server. It assembles all components
-/// from the given configuration and blocks until the server is shut down.
-///
-/// # Arguments
-///
-/// * `config` — The fully constructed [`ServerConfig`].
-///
-/// # Errors
-///
-/// Returns an error if the TCP listener cannot bind or any component
-/// fails to initialise.
-pub async fn run(config: ServerConfig) -> anyhow::Result<()> {
-    // ─── Build event bus ─────────────────────────────────────────────
-    let bus: Arc<dyn EventBus> = match &config.event_bus {
-        EventBusConfig::InProcess { capacity } => {
-            Arc::new(InProcessBus::new(*capacity))
-        }
-    };
-
-    let publisher: Arc<dyn EventBusPublisher> = {
-        let p = bus.publisher().await?;
-        Arc::from(p)
-    };
-
-    // ─── Build auth provider ─────────────────────────────────────────
-    let auth_provider: Arc<dyn AuthProvider> = match &config.auth {
-        AuthConfig::NoAuth => Arc::new(NoAuthProvider::new()),
-        AuthConfig::Jwt {
-            secret,
-            issuer,
-            audience,
-        } => {
-            let mut jwt_config = realtime_auth::JwtConfig::hmac(secret.clone());
-            jwt_config.issuer = issuer.clone();
-            jwt_config.audience = audience.clone();
-            Arc::new(realtime_auth::JwtAuthProvider::new(jwt_config))
-        }
-    };
-
-    // ─── Build core components ───────────────────────────────────────
-    let registry = Arc::new(SubscriptionRegistry::new());
-    let sequence_gen = Arc::new(SequenceGenerator::new());
-    let conn_manager = Arc::new(ConnectionManager::new(config.performance.send_queue_capacity));
-
-    // ─── Build fan-out pool ──────────────────────────────────────────
-    let fanout_pool = FanOutWorkerPool::new(
-        Arc::clone(&conn_manager),
-        config.performance.fanout_workers,
-    );
-    let dispatch_tx = fanout_pool.start();
-
-    // ─── Build event router ─────────────────────────────────────────
-    let router = Arc::new(EventRouter::new(
-        Arc::clone(&registry),
-        Arc::clone(&sequence_gen),
-        dispatch_tx,
-    ));
-
-    // ─── Start bus subscriber → router loop ─────────────────────────
-    let bus_subscriber = bus.subscriber("*").await?;
-    let router_clone = Arc::clone(&router);
-    tokio::spawn(async move {
-        router_clone.run_with_subscriber(bus_subscriber).await;
-    });
-
-    // ─── Start database producers (generic via ProducerRegistry) ────
-    let producer_registry = default_producer_registry();
-    info!("Available adapters: {:?}", producer_registry.adapters());
-
-    for db_config in &config.databases {
-        let adapter = &db_config.adapter;
-        match producer_registry.create_producer(adapter, db_config.config.clone()) {
-            Ok(producer) => {
-                let bus_pub = Arc::clone(&publisher);
-                let adapter_name = adapter.clone();
-                spawn_producer_task(producer, bus_pub, adapter_name.clone());
-                info!(adapter = %adapter_name, "CDC producer configured");
-            }
-            Err(e) => {
-                error!(adapter = %adapter, "Failed to create producer: {}", e);
-            }
-        }
-    }
-
-    // ─── Build HTTP/WS server ────────────────────────────────────────
-    let app_state = AppState {
-        conn_manager: Arc::clone(&conn_manager),
-        registry: Arc::clone(&registry),
-        auth_provider,
-        bus_publisher: Arc::clone(&publisher),
-    };
-
-    let app = Router::new()
-        .route("/ws", get(ws_handler::ws_upgrade))
-        .route("/v1/publish", post(rest_api::publish_event))
-        .route("/v1/publish/batch", post(rest_api::publish_batch))
-        .route("/v1/health", get(rest_api::health_check))
-        .fallback_service(tower_http::services::ServeDir::new(
-            std::env::var("REALTIME_STATIC_DIR")
-                .unwrap_or_else(|_| "sandbox/static".into()),
-        ))
-        .layer(CorsLayer::permissive())
-        .with_state(app_state);
-
-    let addr = format!("{}:{}", config.host, config.port);
-    let listener = tokio::net::TcpListener::bind(&addr).await?;
-    info!("Realtime server listening on {}", addr);
-
-    axum::serve(listener, app).await?;
-
-    // Shutdown
-    bus.shutdown().await.ok();
-
-    Ok(())
 }

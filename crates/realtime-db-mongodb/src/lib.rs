@@ -1,26 +1,14 @@
-/* ************************************************************************** */
-/*                                                                            */
-/*                                                        :::      ::::::::   */
-/*   lib.rs                                             :+:      :+:    :+:   */
-/*                                                    +:+ +:+         +:+     */
-/*   By: dlesieur <dlesieur@student.42.fr>          +#+  +:+       +#+        */
-/*                                                +#+#+#+#+#+   +#+           */
-/*   Created: 2026/04/07 11:12:41 by dlesieur          #+#    #+#             */
-/*   Updated: 2026/04/07 11:12:42 by dlesieur         ###   ########.fr       */
-/*                                                                            */
-/* ************************************************************************** */
-
-mod producer;
 mod config;
+mod producer;
 
-pub use producer::MongoProducer;
 pub use config::MongoConfig;
+pub use producer::MongoProducer;
 
-/// Factory for creating MongoDB change stream producers from generic JSON config.
+/// Factory for creating `MongoDB` change stream producers from generic JSON config.
 pub struct MongoFactory;
 
 impl realtime_core::ProducerFactory for MongoFactory {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "mongodb"
     }
 
@@ -28,10 +16,9 @@ impl realtime_core::ProducerFactory for MongoFactory {
         &self,
         config: serde_json::Value,
     ) -> realtime_core::Result<Box<dyn realtime_core::DatabaseProducer>> {
-        let mongo_config: MongoConfig = serde_json::from_value(config)
-            .map_err(|e| realtime_core::RealtimeError::Internal(
-                format!("Invalid MongoDB config: {}", e)
-            ))?;
+        let mongo_config: MongoConfig = serde_json::from_value(config).map_err(|e| {
+            realtime_core::RealtimeError::Internal(format!("Invalid MongoDB config: {e}"))
+        })?;
         Ok(Box::new(MongoProducer::new(mongo_config)))
     }
 }

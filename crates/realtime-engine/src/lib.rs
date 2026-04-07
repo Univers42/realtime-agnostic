@@ -37,14 +37,14 @@
 //!                        → dispatch_tx → FanOutWorkerPool
 //! ```
 
-pub mod registry;
 pub mod filter_index;
+pub mod producer_registry;
+pub mod registry;
 pub mod router;
 pub mod sequence;
-pub mod producer_registry;
 
-pub use registry::SubscriptionRegistry;
 pub use filter_index::FilterIndex;
+pub use producer_registry::ProducerRegistry;
+pub use registry::SubscriptionRegistry;
 pub use router::EventRouter;
 pub use sequence::SequenceGenerator;
-pub use producer_registry::ProducerRegistry;

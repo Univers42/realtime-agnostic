@@ -29,8 +29,8 @@
 //!   │◄── PONG ───────────────│
 //! ```
 
+use crate::types::{EventEnvelope, EventSource};
 use serde::{Deserialize, Serialize};
-use crate::types::*;
 
 /// Messages sent from a client to the server over WebSocket.
 ///
@@ -180,7 +180,7 @@ pub enum ServerMessage {
 /// so it appears inline in the JSON frame.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventPayload {
-    /// UUIDv7 event identifier (as string).
+    /// `UUIDv7` event identifier (as string).
     pub event_id: String,
     /// Topic path string.
     pub topic: String,
@@ -200,8 +200,7 @@ impl EventPayload {
     /// The binary payload is deserialized into a JSON value. If the
     /// payload is not valid JSON, it falls back to `null`.
     pub fn from_envelope(envelope: &EventEnvelope) -> Self {
-        let payload = serde_json::from_slice(&envelope.payload)
-            .unwrap_or(serde_json::Value::Null);
+        let payload = serde_json::from_slice(&envelope.payload).unwrap_or(serde_json::Value::Null);
 
         Self {
             event_id: envelope.event_id.to_string(),
@@ -248,7 +247,7 @@ pub struct BatchPublishRequest {
 /// REST API response for a single publish operation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublishResponse {
-    /// Assigned UUIDv7 event ID.
+    /// Assigned `UUIDv7` event ID.
     pub event_id: String,
     /// Assigned per-topic sequence number.
     pub sequence: u64,

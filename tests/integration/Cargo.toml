@@ -28,3 +28,6 @@ jsonwebtoken = { workspace = true }
 chrono = { workspace = true }
 smol_str = { workspace = true }
 async-trait = { workspace = true }
+
+[lints]
+workspace = true

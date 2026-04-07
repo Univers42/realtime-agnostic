@@ -114,7 +114,8 @@ impl RealtimeError {
     /// | `ServiceUnavailable`   | 503         |
     /// | `InvalidTopic` / `FilterParseError` / `SubscriptionError` | 400 |
     /// | Everything else        | 500         |
-    pub fn status_code(&self) -> u16 {
+    #[must_use]
+    pub const fn status_code(&self) -> u16 {
         match self {
             Self::AuthFailed(_) => 401,
             Self::AuthorizationDenied(_) => 403,

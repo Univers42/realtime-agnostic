@@ -6,7 +6,7 @@
 /*   By: dlesieur <dlesieur@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/04/07 11:13:08 by dlesieur          #+#    #+#             */
-/*   Updated: 2026/04/07 11:23:06 by dlesieur         ###   ########.fr       */
+/*   Updated: 2026/04/07 13:05:07 by dlesieur         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -35,18 +35,14 @@ use realtime_core::{DatabaseProducer, ProducerFactory, RealtimeError, Result};
 /// Allows runtime registration of database adapters by name.
 /// The server iterates its config, looks up the adapter name in the
 /// registry, and calls `create()` with the adapter-specific JSON config.
-///
-/// This is the generic extension point — adding support for a new
-/// database only requires:
-/// 1. Implement `DatabaseProducer` + `EventStream`
-/// 2. Implement `ProducerFactory`
-/// 3. Call `registry.register(MyFactory)` before server startup
+#[derive(Default)]
 pub struct ProducerRegistry {
     factories: RwLock<HashMap<String, Box<dyn ProducerFactory>>>,
 }
 
 impl ProducerRegistry {
     /// Create an empty producer registry.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             factories: RwLock::new(HashMap::new()),
@@ -57,9 +53,17 @@ impl ProducerRegistry {
     ///
     /// If a factory with the same name already exists, it is overwritten.
     /// This allows test code to replace real adapters with mocks.
-    pub fn register(&self, factory: Box<dyn ProducerFactory>) {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RealtimeError::Internal`] if the `RwLock` is poisoned.
+    pub fn register(&self, factory: Box<dyn ProducerFactory>) -> Result<()> {
         let name = factory.name().to_string();
-        self.factories.write().unwrap().insert(name, factory);
+        self.factories
+            .write()
+            .map_err(|e| RealtimeError::Internal(format!("RwLock poisoned: {e}")))?
+            .insert(name, factory);
+        Ok(())
     }
 
     /// Create a [`DatabaseProducer`] by looking up the adapter name.
@@ -72,12 +76,16 @@ impl ProducerRegistry {
     /// # Errors
     ///
     /// Returns [`RealtimeError::Internal`] if the adapter is not registered.
+    #[allow(clippy::significant_drop_tightening)]
     pub fn create_producer(
         &self,
         adapter: &str,
         config: serde_json::Value,
     ) -> Result<Box<dyn DatabaseProducer>> {
-        let factories = self.factories.read().unwrap();
+        let factories = self
+            .factories
+            .read()
+            .map_err(|e| RealtimeError::Internal(format!("RwLock poisoned: {e}")))?;
         let factory = factories.get(adapter).ok_or_else(|| {
             RealtimeError::Internal(format!(
                 "Unknown database adapter '{}'. Registered adapters: [{}]",
@@ -89,22 +97,33 @@ impl ProducerRegistry {
     }
 
     /// List the names of all registered adapters.
-    pub fn adapters(&self) -> Vec<String> {
-        self.factories.read().unwrap().keys().cloned().collect()
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RealtimeError::Internal`] if the `RwLock` is poisoned.
+    pub fn adapters(&self) -> Result<Vec<String>> {
+        let factories = self
+            .factories
+            .read()
+            .map_err(|e| RealtimeError::Internal(format!("RwLock poisoned: {e}")))?;
+        Ok(factories.keys().cloned().collect())
     }
 
     /// Check whether an adapter with the given name is registered.
-    pub fn has_adapter(&self, name: &str) -> bool {
-        self.factories.read().unwrap().contains_key(name)
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RealtimeError::Internal`] if the `RwLock` is poisoned.
+    pub fn has_adapter(&self, name: &str) -> Result<bool> {
+        let factories = self
+            .factories
+            .read()
+            .map_err(|e| RealtimeError::Internal(format!("RwLock poisoned: {e}")))?;
+        Ok(factories.contains_key(name))
     }
 }
 
-impl Default for ProducerRegistry {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
+#[allow(clippy::unwrap_used)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -124,7 +143,7 @@ mod tests {
         async fn health_check(&self) -> Result<()> {
             Ok(())
         }
-        fn name(&self) -> &str {
+        fn name(&self) -> &'static str {
             "dummy"
         }
     }
@@ -141,7 +160,7 @@ mod tests {
     struct DummyFactory;
 
     impl ProducerFactory for DummyFactory {
-        fn name(&self) -> &str {
+        fn name(&self) -> &'static str {
             "dummy"
         }
         fn create(&self, _config: serde_json::Value) -> Result<Box<dyn DatabaseProducer>> {
@@ -152,11 +171,11 @@ mod tests {
     #[test]
     fn test_register_and_create() {
         let registry = ProducerRegistry::new();
-        registry.register(Box::new(DummyFactory));
+        registry.register(Box::new(DummyFactory)).unwrap();
 
-        assert!(registry.has_adapter("dummy"));
-        assert!(!registry.has_adapter("mysql"));
-        assert_eq!(registry.adapters(), vec!["dummy".to_string()]);
+        assert!(registry.has_adapter("dummy").unwrap());
+        assert!(!registry.has_adapter("mysql").unwrap());
+        assert_eq!(registry.adapters().unwrap(), vec!["dummy".to_string()]);
 
         let producer = registry.create_producer("dummy", serde_json::json!({}));
         assert!(producer.is_ok());
