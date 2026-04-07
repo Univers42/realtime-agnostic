@@ -25,3 +25,4 @@ Update 23: improvements
 Update 24: improvements
 Update 25: improvements
 Update 26: improvements
+Update 27: improvements
