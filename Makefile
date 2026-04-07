@@ -1,5 +1,6 @@
 .PHONY: help build test up down logs clean seed status dev audit \
-        docker-login docker-build docker-push docker-update docker-tag docker-pull
+	docker-login docker-build docker-push docker-update docker-tag docker-pull \
+	docker-release docker-build-release docker-push-release
 
 .DEFAULT_GOAL := help
 
@@ -14,6 +15,8 @@ IMAGE_NAME     := $(DOCKER_USER)/$(DOCKER_REPO)
 # Version: use git tag if present, otherwise git short hash, fallback to "dev".
 VERSION        ?= $(shell git describe --tags --exact-match 2>/dev/null || \
                          git rev-parse --short HEAD 2>/dev/null || echo "dev")
+# Release version: use the workspace Cargo.toml version for published images.
+RELEASE_VERSION ?= $(shell awk -F '"' '/^version =/ { print $$2; exit }' Cargo.toml)
 COMPOSE := docker compose -f sandbox/docker-compose.yml
 PROJECT := realtime-agnostic
 
@@ -126,8 +129,9 @@ test-ws: ## Quick WebSocket test (requires websocat)
 # ─── Docker Hub targets ───────────────────────────────────────────────────
 
 docker-login: ## Log in to Docker Hub using PAT from .env
-	@echo "$(PAT)" | docker login -u $(login_name) --password-stdin
-	@echo "Logged in as $(login_name)"
+	@set -a; . ./.env; set +a; \
+	printf '%s' "$$PAT" | docker login -u "$$login_name" --password-stdin
+	@echo "Logged in as $$login_name"
 
 docker-build: ## Build Docker image  →  dlesieur/realtime-agnostic:<version>
 	@echo "Building $(IMAGE_NAME):$(VERSION) ..."
@@ -169,3 +173,35 @@ endif
 
 docker-pull: ## Pull latest image from Docker Hub (useful in mini-baas)
 	docker pull $(IMAGE_NAME):latest
+
+docker-build-release: ## Build Docker image tagged with the workspace version + latest
+	@echo "Building $(IMAGE_NAME):$(RELEASE_VERSION) ..."
+	docker build \
+		--tag $(IMAGE_NAME):$(RELEASE_VERSION) \
+		--tag $(IMAGE_NAME):latest \
+		--label "org.opencontainers.image.revision=$(RELEASE_VERSION)" \
+		--label "org.opencontainers.image.created=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)" \
+		.
+	@echo ""
+	@echo "  Built: $(IMAGE_NAME):$(RELEASE_VERSION)"
+	@echo "  Built: $(IMAGE_NAME):latest"
+
+docker-push-release: ## Push versioned Docker image + latest to Docker Hub
+	docker push $(IMAGE_NAME):$(RELEASE_VERSION)
+	docker push $(IMAGE_NAME):latest
+	@echo ""
+	@echo "  Pushed: $(IMAGE_NAME):$(RELEASE_VERSION)"
+	@echo "  Pushed: $(IMAGE_NAME):latest"
+	@echo "  Hub:    https://hub.docker.com/r/$(IMAGE_NAME)"
+
+docker-release: docker-login docker-build-release docker-push-release ## Full release cycle using Cargo.toml version
+	@echo ""
+	@echo "  ┌──────────────────────────────────────────────────┐"
+	@echo "  │  Release image published                         │"
+	@echo "  │                                                  │"
+	@echo "  │  docker pull $(IMAGE_NAME):$(RELEASE_VERSION)"
+	@echo "  │  docker pull $(IMAGE_NAME):latest"
+	@echo "  │                                                  │"
+	@echo "  │  In mini-baas:                                   │"
+	@echo "  │    image: $(IMAGE_NAME):$(RELEASE_VERSION)       │"
+	@echo "  └──────────────────────────────────────────────────┘"
