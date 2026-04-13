@@ -25,7 +25,8 @@ use tracing::info;
 /// State for a single active WebSocket connection.
 pub struct ConnectionState {
     pub meta: ConnectionMeta,
-    pub send_tx: mpsc::Sender<Arc<EventEnvelope>>,
+    /// Per-connection send queue: `(sub_id, event)` tuples.
+    pub send_tx: mpsc::Sender<(String, Arc<EventEnvelope>)>,
     pub overflow_policy: OverflowPolicy,
 }
 
@@ -64,7 +65,7 @@ impl ConnectionManager {
         &self,
         meta: ConnectionMeta,
         overflow_policy: OverflowPolicy,
-    ) -> (ConnectionId, mpsc::Receiver<Arc<EventEnvelope>>) {
+    ) -> (ConnectionId, mpsc::Receiver<(String, Arc<EventEnvelope>)>) {
         let conn_id = meta.conn_id;
         let (send_tx, send_rx) = mpsc::channel(self.send_queue_capacity);
         let state = ConnectionState {
@@ -137,10 +138,11 @@ mod tests {
             bytes::Bytes::from("{}"),
         ));
 
-        let result = mgr.try_send(conn_id, event);
+        let result = mgr.try_send(conn_id, "sub-1".to_string(), event);
         assert_eq!(result, SendResult::Sent);
 
-        let received = rx.recv().await.unwrap();
+        let (sub_id, received) = rx.recv().await.unwrap();
+        assert_eq!(sub_id, "sub-1");
         assert_eq!(received.event_type, "test");
     }
 
@@ -153,7 +155,7 @@ mod tests {
             bytes::Bytes::from("{}"),
         ));
 
-        let result = mgr.try_send(ConnectionId(999), event);
+        let result = mgr.try_send(ConnectionId(999), "sub-x".to_string(), event);
         assert_eq!(result, SendResult::ConnectionGone);
     }
 }

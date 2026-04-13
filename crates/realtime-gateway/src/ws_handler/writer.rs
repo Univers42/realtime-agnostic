@@ -14,10 +14,10 @@ enum SendStatus {
     Failed,
 }
 
-fn serialize_event(event: &EventEnvelope) -> Option<String> {
+fn serialize_event(sub_id: &str, event: &EventEnvelope) -> Option<String> {
     let payload = EventPayload::from_envelope(event);
     let msg = ServerMessage::Event {
-        sub_id: String::new(),
+        sub_id: sub_id.to_owned(),
         event: payload,
     };
     serde_json::to_string(&msg).ok()
@@ -63,14 +63,14 @@ async fn send_frame(
 
 pub(super) async fn writer_loop(
     mut ws_sink: SplitSink<WebSocket, Message>,
-    mut send_rx: mpsc::Receiver<Arc<EventEnvelope>>,
+    mut send_rx: mpsc::Receiver<(String, Arc<EventEnvelope>)>,
     mut ctrl_rx: mpsc::Receiver<String>,
     conn_id: ConnectionId,
 ) {
     let mut slow_count = 0u32;
     loop {
         let json = tokio::select! {
-            Some(ev) = send_rx.recv() => if let Some(j) = serialize_event(&ev) { j } else {
+            Some((sub_id, ev)) = send_rx.recv() => if let Some(j) = serialize_event(&sub_id, &ev) { j } else {
                 error!(conn_id = %conn_id, "Failed to serialize event");
                 continue;
             },

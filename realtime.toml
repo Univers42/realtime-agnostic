@@ -43,7 +43,7 @@ capacity = 65536         # Channel capacity (events)
 
 [performance]
 send_queue_capacity       = 256    # Per-connection outgoing buffer (messages)
-fanout_workers            = 0      # 0 = auto-detect (number of CPU cores)
+fanout_workers            = 4      # Number of fan-out worker tasks (0 = auto-detect)
 dispatch_channel_capacity = 65536  # Internal dispatch channel capacity
 
 # ─── Engine Limits ───────────────────────────────────────────────────────────

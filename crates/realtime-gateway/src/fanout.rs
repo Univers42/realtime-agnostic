@@ -29,9 +29,17 @@ impl FanOutWorkerPool {
 
     #[must_use]
     pub fn start(&self) -> mpsc::Sender<DispatchMessage> {
+        // Treat 0 as auto-detect: use the number of available CPU cores (min 1).
+        let count = if self.worker_count == 0 {
+            std::thread::available_parallelism()
+                .map(std::num::NonZero::get)
+                .unwrap_or(4)
+        } else {
+            self.worker_count
+        };
         let (tx, rx) = mpsc::channel::<DispatchMessage>(65536);
         let shared_rx = Arc::new(tokio::sync::Mutex::new(rx));
-        for worker_id in 0..self.worker_count {
+        for worker_id in 0..count {
             let cm = Arc::clone(&self.conn_manager);
             let rx = Arc::clone(&shared_rx);
             tokio::spawn(run_worker(worker_id, rx, cm));
@@ -74,7 +82,7 @@ async fn run_worker(
 
 fn handle_dispatch(worker_id: usize, dispatch: LocalDispatch, conn_manager: &ConnectionManager) {
     let conn_id = dispatch.conn_id;
-    match conn_manager.try_send(conn_id, dispatch.event) {
+    match conn_manager.try_send(conn_id, dispatch.sub_id.to_string(), dispatch.event) {
         SendResult::Sent => {}
         SendResult::DroppedNewest | SendResult::DroppedOldest => {
             debug!(worker = worker_id, conn_id = %conn_id, "Event dropped due to overflow");

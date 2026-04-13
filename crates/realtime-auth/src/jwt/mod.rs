@@ -79,6 +79,11 @@ fn build_validation(config: &JwtConfig) -> Validation {
     }
     if let Some(ref audience) = config.audience {
         validation.set_audience(&[audience]);
+    } else {
+        // When no audience is configured, accept tokens with any (or no) `aud` claim.
+        // `Validation::new()` defaults `validate_aud` to `true`, which rejects tokens
+        // containing an `aud` field when no expected audience is set.
+        validation.validate_aud = false;
     }
     validation
 }
