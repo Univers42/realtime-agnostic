@@ -1,3 +1,15 @@
+/* ************************************************************************** */
+/*                                                                            */
+/*                                                        :::      ::::::::   */
+/*   server.rs                                          :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: dlesieur <dlesieur@student.42.fr>          +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: 2026/05/18 21:19:15 by dlesieur          #+#    #+#             */
+/*   Updated: 2026/05/18 21:19:15 by dlesieur         ###   ########.fr       */
+/*                                                                            */
+/* ************************************************************************** */
+
 //! Server assembly — wires every crate together into a running HTTP/WS server.
 //!
 //! This module is the **composition root** of the system. It reads
@@ -13,6 +25,7 @@ use axum::{
 };
 use realtime_auth::NoAuthProvider;
 use realtime_bus_inprocess::InProcessBus;
+use realtime_bus_irc::{IrcBus, IrcBusConfig};
 use realtime_core::{AuthProvider, DatabaseProducer, EventBus, EventBusPublisher};
 use realtime_engine::{
     registry::SubscriptionRegistry, router::EventRouter, sequence::SequenceGenerator,
@@ -71,13 +84,51 @@ pub async fn run(config: ServerConfig) -> anyhow::Result<()> {
 fn build_event_bus(config: &ServerConfig) -> Arc<dyn EventBus> {
     let bus: Arc<dyn EventBus> = match &config.event_bus {
         EventBusConfig::InProcess { capacity } => Arc::new(InProcessBus::new(*capacity)),
+        EventBusConfig::Irc {
+            host,
+            port,
+            password,
+            nick,
+            user,
+            realname,
+            channels,
+            namespace,
+            capacity,
+        } => Arc::new(IrcBus::new(IrcBusConfig {
+            host: host.clone(),
+            port: *port,
+            password: password.clone(),
+            nick: nick.clone(),
+            user: user.clone(),
+            realname: realname.clone(),
+            channels: channels.clone(),
+            namespace: namespace.clone(),
+            capacity: *capacity,
+        })),
     };
     bus
 }
 
 fn build_auth_provider(config: &ServerConfig) -> anyhow::Result<Arc<dyn AuthProvider>> {
     match &config.auth {
-        AuthConfig::NoAuth => Ok(Arc::new(NoAuthProvider::new())),
+        AuthConfig::NoAuth => {
+            // Phase 5: NoAuth accepts ANY token with all-access claims. Refuse it
+            // under SECURITY_MODE=max (use JWT) unless explicitly overridden;
+            // baseline keeps working but logs a loud warning.
+            let max = std::env::var("SECURITY_MODE").ok().as_deref() == Some("max");
+            let allow = std::env::var("REALTIME_ALLOW_NOAUTH").ok().as_deref() == Some("1");
+            if max && !allow {
+                anyhow::bail!(
+                    "NoAuth realtime provider refused under SECURITY_MODE=max — configure JWT, \
+                     or set REALTIME_ALLOW_NOAUTH=1 to override"
+                );
+            }
+            tracing::warn!(
+                "realtime auth=NoAuth: ALL tokens accepted with all-access claims — not for \
+                 production (use JWT; SECURITY_MODE=max refuses NoAuth)"
+            );
+            Ok(Arc::new(NoAuthProvider::new()))
+        }
         AuthConfig::Jwt {
             secret,
             issuer,
