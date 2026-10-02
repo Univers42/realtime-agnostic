@@ -17,6 +17,7 @@
 //! auth provider, router, fan-out pool, database producers, and HTTP routes,
 //! then binds a TCP listener.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use axum::{
@@ -26,7 +27,7 @@ use axum::{
 use realtime_auth::NoAuthProvider;
 use realtime_bus_inprocess::InProcessBus;
 use realtime_bus_irc::{IrcBus, IrcBusConfig};
-use realtime_core::{AuthProvider, DatabaseProducer, EventBus, EventBusPublisher};
+use realtime_core::{AuthProvider, EventBus, EventBusPublisher};
 use realtime_engine::{
     registry::SubscriptionRegistry, router::EventRouter, sequence::SequenceGenerator,
     ProducerRegistry,
@@ -35,7 +36,7 @@ use realtime_gateway::{
     connection::ConnectionManager,
     fanout::FanOutWorkerPool,
     rest_api,
-    ws_handler::{self, AppState},
+    ws_handler::{self, AppState, ProducerHandle},
 };
 use tokio::sync::mpsc;
 use tower_http::cors::CorsLayer;
@@ -60,12 +61,13 @@ pub async fn run(config: ServerConfig) -> anyhow::Result<()> {
     let dispatch_tx = build_fanout(&conn_manager, config.performance.fanout_workers);
     let router = wire_router(&registry, &sequence_gen, dispatch_tx);
     spawn_bus_loop(&bus, &router).await?;
-    start_producers(&config, &publisher);
+    let producers = start_producers(&config, &publisher);
     let app = build_http_router(
         conn_manager,
         registry,
         auth_provider,
         publisher,
+        producers,
         &config.static_dir,
     );
 
@@ -190,20 +192,30 @@ async fn spawn_bus_loop(bus: &Arc<dyn EventBus>, router: &Arc<EventRouter>) -> a
     Ok(())
 }
 
-fn start_producers(config: &ServerConfig, publisher: &Arc<dyn EventBusPublisher>) {
+fn start_producers(
+    config: &ServerConfig,
+    publisher: &Arc<dyn EventBusPublisher>,
+) -> Arc<Vec<ProducerHandle>> {
     let registry = default_producer_registry();
     if let Ok(adapters) = registry.adapters() {
         info!("Available adapters: {:?}", adapters);
     }
+    let mut handles = Vec::new();
     for db_cfg in &config.databases {
         match registry.create_producer(&db_cfg.adapter, db_cfg.config.clone()) {
             Ok(producer) => {
-                let name = db_cfg.adapter.clone();
-                spawn_producer_task(producer, Arc::clone(publisher), name);
+                let handle = ProducerHandle {
+                    name: db_cfg.adapter.clone(),
+                    producer: Arc::from(producer),
+                    ended: Arc::new(AtomicBool::new(false)),
+                };
+                spawn_producer_task(handle.clone(), Arc::clone(publisher));
+                handles.push(handle);
             }
             Err(e) => error!(adapter = %db_cfg.adapter, "Failed to create producer: {}", e),
         }
     }
+    Arc::new(handles)
 }
 
 fn build_http_router(
@@ -211,6 +223,7 @@ fn build_http_router(
     registry: Arc<SubscriptionRegistry>,
     auth_provider: Arc<dyn AuthProvider>,
     bus_publisher: Arc<dyn EventBusPublisher>,
+    producers: Arc<Vec<ProducerHandle>>,
     static_dir: &str,
 ) -> Router {
     let state = AppState {
@@ -219,6 +232,7 @@ fn build_http_router(
         auth_provider,
         bus_publisher,
         allowed_origins: realtime_gateway::origin::OriginPolicy::from_env().map(Arc::new),
+        producers,
     };
     Router::new()
         .route("/ws", get(ws_handler::ws_upgrade))
@@ -239,21 +253,30 @@ pub fn default_producer_registry() -> ProducerRegistry {
     registry
 }
 
-fn spawn_producer_task(
-    producer: Box<dyn DatabaseProducer>,
-    bus_pub: Arc<dyn EventBusPublisher>,
-    adapter_name: String,
-) {
+fn spawn_producer_task(handle: ProducerHandle, bus_pub: Arc<dyn EventBusPublisher>) {
     tokio::spawn(async move {
-        match producer.start().await {
+        let adapter_name = &handle.name;
+        match handle.producer.start().await {
             Ok(mut stream) => {
                 while let Some(event) = stream.next_event().await {
                     if let Err(e) = bus_pub.publish(event.topic.as_str(), &event).await {
                         error!(adapter = %adapter_name, "Failed to publish event: {}", e);
                     }
                 }
+                // next_event() returning None means the producer's sender was
+                // dropped: this task is finished and no further change event
+                // will EVER be published for this database. It used to end
+                // here in total silence while the process kept serving
+                // WebSockets, so the only symptom was subscribers receiving
+                // nothing. Say so.
+                error!(
+                    adapter = %adapter_name,
+                    "producer stream ended — no further change events will be published for this database"
+                );
             }
             Err(e) => error!(adapter = %adapter_name, "Failed to start producer: {}", e),
         }
+        // Either way nothing more will flow: /v1/health reports it detached.
+        handle.ended.store(true, Ordering::SeqCst);
     });
 }

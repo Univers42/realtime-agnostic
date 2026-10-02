@@ -21,8 +21,8 @@
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use bytes::Bytes;
 use realtime_core::{
-    BatchPublishRequest, BatchPublishResponse, EventEnvelope, HealthResponse, PublishRequest,
-    PublishResponse, TopicPath,
+    BatchPublishRequest, BatchPublishResponse, EventEnvelope, HealthResponse, ProducerHealth,
+    PublishRequest, PublishResponse, TopicPath,
 };
 use tracing::{debug, error};
 
@@ -160,8 +160,22 @@ pub async fn publish_batch(
 pub async fn health_check(State(state): State<AppState>) -> impl IntoResponse {
     let filter_snapshot = state.registry.filter_index_snapshot();
 
-    // Status is "degraded" if the circuit breaker has recently bypassed evaluations.
-    let status = if filter_snapshot.circuit_bypassed > 0 {
+    let producers: Vec<ProducerHealth> = state
+        .producers
+        .iter()
+        .map(|p| ProducerHealth {
+            name: p.name.clone(),
+            attached: p.attached(),
+        })
+        .collect();
+    // A detached producer means no row change reaches any subscriber: the
+    // process serves WebSockets that will never carry an event. That is not
+    // healthy, so it answers 503 and the container probe fails on it.
+    let detached = producers.iter().any(|p| p.attached == Some(false));
+
+    // Status is "degraded" if the circuit breaker has recently bypassed
+    // evaluations (still 200), or a producer is detached (503).
+    let status = if detached || filter_snapshot.circuit_bypassed > 0 {
         "degraded"
     } else {
         "ok"
@@ -174,6 +188,12 @@ pub async fn health_check(State(state): State<AppState>) -> impl IntoResponse {
         uptime_seconds: 0,
         filter_index: serde_json::to_value(&filter_snapshot).ok(),
         dispatch: None,
+        producers,
     };
-    (StatusCode::OK, Json(resp))
+    let code = if detached {
+        StatusCode::SERVICE_UNAVAILABLE
+    } else {
+        StatusCode::OK
+    };
+    (code, Json(resp))
 }

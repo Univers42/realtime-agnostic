@@ -86,6 +86,7 @@ async fn start_test_server_with(
         auth_provider,
         bus_publisher: Arc::clone(&publisher),
         allowed_origins: None,
+        producers: Arc::new(Vec::new()),
     };
 
     let app = Router::new()
