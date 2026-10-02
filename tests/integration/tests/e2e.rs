@@ -46,6 +46,13 @@ use tower_http::cors::CorsLayer;
 
 /// Helper: spin up a full server and return the address + shared state.
 async fn start_test_server() -> (String, Arc<dyn EventBusPublisher>, Arc<dyn EventBus>) {
+    start_test_server_with(Arc::new(NoAuthProvider::new())).await
+}
+
+/// Start the test server with a given auth provider.
+async fn start_test_server_with(
+    auth_provider: Arc<dyn AuthProvider>,
+) -> (String, Arc<dyn EventBusPublisher>, Arc<dyn EventBus>) {
     let bus: Arc<dyn EventBus> = Arc::new(InProcessBus::new(16384));
 
     let publisher: Arc<dyn EventBusPublisher> = {
@@ -53,7 +60,6 @@ async fn start_test_server() -> (String, Arc<dyn EventBusPublisher>, Arc<dyn Eve
         Arc::from(p)
     };
 
-    let auth_provider: Arc<dyn AuthProvider> = Arc::new(NoAuthProvider::new());
     let registry = Arc::new(SubscriptionRegistry::new());
     let sequence_gen = Arc::new(SequenceGenerator::new());
     let conn_manager = Arc::new(ConnectionManager::new(1024));
@@ -79,6 +85,7 @@ async fn start_test_server() -> (String, Arc<dyn EventBusPublisher>, Arc<dyn Eve
         registry: Arc::clone(&registry),
         auth_provider,
         bus_publisher: Arc::clone(&publisher),
+        allowed_origins: None,
     };
 
     let app = Router::new()
@@ -721,6 +728,58 @@ async fn test_jwt_auth_provider() {
     assert_eq!(auth_claims.sub, "user-123");
 }
 
+/// Regression for the rc.3 authz fix: a token scoped to one namespace must be
+/// DENIED publish to another namespace. `handle_publish`/`handle_broadcast`/
+/// `handle_track` all gate on `authorize_publish`, so this is the primitive that
+/// keeps a tenant from broadcasting / injecting presence into another tenant's
+/// topics. (Before the fix those handlers checked only authentication.)
+#[tokio::test]
+async fn test_jwt_authorize_publish_is_namespace_scoped() {
+    use jsonwebtoken::{encode, EncodingKey, Header};
+    use realtime_auth::{JwtAuthProvider, JwtConfig};
+    use realtime_core::{AuthContext, AuthProvider};
+
+    let secret = "test-secret-key-for-jwt-testing-2024";
+    let config = JwtConfig::hmac(secret);
+    let provider = JwtAuthProvider::new(&config).unwrap();
+
+    let claims = json!({
+        "sub": "user-a",
+        "exp": chrono::Utc::now().timestamp() + 3600,
+        "iat": chrono::Utc::now().timestamp(),
+        "can_publish": true,
+        "namespaces": ["tenant_a"]
+    });
+    let token = encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(secret.as_bytes()),
+    )
+    .unwrap();
+    let ctx = AuthContext {
+        peer_addr: "127.0.0.1:0".parse().unwrap(),
+        transport: "websocket".to_string(),
+    };
+    let auth_claims = provider.verify(&token, &ctx).await.unwrap();
+
+    // Allowed inside its own namespace …
+    assert!(
+        provider
+            .authorize_publish(&auth_claims, &TopicPath::new("tenant_a/orders"))
+            .await
+            .is_ok(),
+        "publish to own namespace must be allowed"
+    );
+    // … denied to another tenant's namespace (the isolation guarantee).
+    assert!(
+        provider
+            .authorize_publish(&auth_claims, &TopicPath::new("tenant_b/orders"))
+            .await
+            .is_err(),
+        "publish to another namespace must be DENIED"
+    );
+}
+
 #[tokio::test]
 async fn test_jwt_auth_rejects_invalid_token() {
     use realtime_auth::{JwtAuthProvider, JwtConfig};
@@ -1171,4 +1230,27 @@ async fn test_realtime_client_sdk_e2e() {
 
     assert_eq!(received.topic.as_str(), "sdk/topic");
     assert_eq!(received.event_type, "sdk_event");
+}
+
+/// A refused AUTH reaches the client as `AUTH_FAILED` before the close. The writer
+/// used to race the queued error frame against the goodbye and sometimes sent
+/// only the close, so a client could not tell an auth refusal from a drop.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn test_auth_failed_frame_precedes_close() {
+    use realtime_auth::{JwtAuthProvider, JwtConfig};
+
+    let provider = JwtAuthProvider::new(&JwtConfig::hmac("race-secret-at-least-32-characters!!"));
+    let (addr, _publisher, _bus) = start_test_server_with(Arc::new(provider.unwrap())).await;
+    for attempt in 0..200 {
+        let (mut ws, _) = connect_async(format!("ws://{addr}/ws")).await.unwrap();
+        let auth = json!({ "type": "AUTH", "token": "not.a.token" }).to_string();
+        ws.send(Message::Text(auth)).await.unwrap();
+        let first = tokio::time::timeout(Duration::from_secs(5), ws.next()).await;
+        match first.expect("no reply within 5s") {
+            Some(Ok(Message::Text(t))) => {
+                assert!(t.contains("AUTH_FAILED"), "attempt {attempt}: {t}");
+            }
+            other => panic!("attempt {attempt}: closed before AUTH_FAILED: {other:?}"),
+        }
+    }
 }

@@ -133,10 +133,14 @@ fn build_auth_provider(config: &ServerConfig) -> anyhow::Result<Arc<dyn AuthProv
             secret,
             issuer,
             audience,
+            allow_no_issuer,
+            previous_secret,
         } => {
             let mut jwt = realtime_auth::JwtConfig::hmac(secret.clone());
+            jwt.previous_secret.clone_from(previous_secret);
             jwt.issuer.clone_from(issuer);
             jwt.audience.clone_from(audience);
+            jwt.require_issuer = !allow_no_issuer;
             Ok(Arc::new(realtime_auth::JwtAuthProvider::new(&jwt)?))
         }
     }
@@ -214,6 +218,7 @@ fn build_http_router(
         registry,
         auth_provider,
         bus_publisher,
+        allowed_origins: realtime_gateway::origin::OriginPolicy::from_env().map(Arc::new),
     };
     Router::new()
         .route("/ws", get(ws_handler::ws_upgrade))

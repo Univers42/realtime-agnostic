@@ -80,6 +80,13 @@ async fn send_frame(
     }
 }
 
+/// Drains the control and event queues into the socket until both close or a
+/// send fails.
+///
+/// The select is `biased`: queued control frames (`AUTH_FAILED`, errors, acks)
+/// go out before queued events, so a refused AUTH is always answered by the
+/// frame that explains it before the connection is torn down. The reader,
+/// their sole producer, has ended by then, so the backlog is finite.
 pub(super) async fn writer_loop(
     mut ws_sink: SplitSink<WebSocket, Message>,
     mut send_rx: mpsc::Receiver<(String, Arc<EventEnvelope>)>,
@@ -89,11 +96,12 @@ pub(super) async fn writer_loop(
     let mut slow_count = 0u32;
     loop {
         let json = tokio::select! {
+            biased;
+            Some(ctrl) = ctrl_rx.recv() => ctrl,
             Some((sub_id, ev)) = send_rx.recv() => if let Some(j) = serialize_event(&sub_id, &ev) { j } else {
                 error!(conn_id = %conn_id, "Failed to serialize event");
                 continue;
             },
-            Some(ctrl) = ctrl_rx.recv() => ctrl,
             else => break,
         };
         match send_frame(&mut ws_sink, json, conn_id, &mut slow_count).await {

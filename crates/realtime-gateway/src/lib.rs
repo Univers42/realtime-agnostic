@@ -37,6 +37,7 @@
 
 pub mod connection;
 pub mod fanout;
+pub mod origin;
 pub mod rest_api;
 pub mod ws_handler;
 
