@@ -219,20 +219,8 @@ pub(super) async fn handle_publish(
     auth: &AuthState,
     state: &AppState,
 ) -> Action {
-    if !auth.authenticated {
-        warn!(conn_id = %conn_id, "Publish before auth");
+    if !authorize_publish_topic("Publish", &topic, conn_id, auth, state).await {
         return Action::Continue;
-    }
-    if let Some(ref c) = auth.claims {
-        if state
-            .auth_provider
-            .authorize_publish(c, &TopicPath::new(&topic))
-            .await
-            .is_err()
-        {
-            warn!(conn_id = %conn_id, topic = %topic, "Publish denied (namespace)");
-            return Action::Continue;
-        }
     }
     debug!(conn_id = %conn_id, topic = %topic, event_type = %event_type, "PUBLISH received");
     let payload_bytes = match serde_json::to_vec(&payload) {
@@ -253,23 +241,7 @@ pub(super) async fn handle_publish(
     );
     // Stamp the originating platform user so identity-aware buses (e.g. the IRC
     // bridge) can attribute the event to that user rather than a service nick.
-    if let Some(claims) = &auth.claims {
-        let mut metadata = std::collections::HashMap::new();
-        if let Some(handle) = claims
-            .metadata
-            .get("handle")
-            .or_else(|| claims.metadata.get("name"))
-            .or_else(|| claims.metadata.get("preferred_username"))
-            .and_then(serde_json::Value::as_str)
-        {
-            metadata.insert("handle".to_string(), handle.to_string());
-        }
-        envelope.source = Some(EventSource {
-            kind: SourceKind::Api,
-            id: claims.sub.clone(),
-            metadata,
-        });
-    }
+    envelope.source = api_source(auth);
     if let Err(e) = state
         .bus_publisher
         .publish(envelope.topic.as_str(), &envelope)
@@ -278,4 +250,57 @@ pub(super) async fn handle_publish(
         error!(conn_id = %conn_id, "Failed to publish event: {}", e);
     }
     Action::Continue
+}
+
+/// Gate a publish-like client message on the JWT namespace allow-list.
+///
+/// Returns `true` when the caller may proceed. Mirrors the single-handler
+/// shape byte-for-byte: reject pre-auth, then (only when `claims` is present —
+/// preserving NoAuth-mode parity) deny if `authorize_publish` fails. `what` is
+/// the action label used in the denial logs (e.g. `"Publish"`), so every
+/// publish-like handler emits the same warnings.
+async fn authorize_publish_topic(
+    what: &str,
+    topic: &str,
+    conn_id: ConnectionId,
+    auth: &AuthState,
+    state: &AppState,
+) -> bool {
+    if !auth.authenticated {
+        warn!(conn_id = %conn_id, "{what} before auth");
+        return false;
+    }
+    if let Some(ref c) = auth.claims {
+        if state
+            .auth_provider
+            .authorize_publish(c, &TopicPath::new(topic))
+            .await
+            .is_err()
+        {
+            warn!(conn_id = %conn_id, topic = %topic, "{what} denied (namespace)");
+            return false;
+        }
+    }
+    true
+}
+
+/// Build an [`EventSource`] from the connection's auth claims so identity-aware
+/// buses (e.g. the IRC bridge) can attribute the event to the platform user.
+fn api_source(auth: &AuthState) -> Option<EventSource> {
+    let claims = auth.claims.as_ref()?;
+    let mut metadata = std::collections::HashMap::new();
+    if let Some(handle) = claims
+        .metadata
+        .get("handle")
+        .or_else(|| claims.metadata.get("name"))
+        .or_else(|| claims.metadata.get("preferred_username"))
+        .and_then(serde_json::Value::as_str)
+    {
+        metadata.insert("handle".to_string(), handle.to_string());
+    }
+    Some(EventSource {
+        kind: SourceKind::Api,
+        id: claims.sub.clone(),
+        metadata,
+    })
 }
