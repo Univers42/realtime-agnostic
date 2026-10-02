@@ -151,7 +151,6 @@ jobs:
 
       - name: Audit dependencies for vulnerabilities
         run: cargo audit
-        continue-on-error: true   # advisory DB may lag; treat as warning in CI
 
       - name: Check for unused dependencies
         run: |
