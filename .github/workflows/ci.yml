@@ -154,6 +154,5 @@ jobs:
 
       - name: Check for unused dependencies
         run: |
-          cargo install cargo-machete --locked 2>/dev/null || true
-          cargo machete 2>/dev/null || true
-        continue-on-error: true
+          cargo install cargo-machete@0.9.2 --locked
+          cargo machete
