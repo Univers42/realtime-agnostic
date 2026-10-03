@@ -36,6 +36,7 @@
 //! | `RUST_LOG` | tracing filter (e.g. `info,realtime_engine=debug`) |
 
 use realtime_server::config::{AuthConfig, DatabaseConfig, ServerConfig};
+use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
 use tracing_subscriber::EnvFilter;
@@ -81,8 +82,20 @@ fn healthcheck() -> anyhow::Result<()> {
         .to_socket_addrs()?
         .next()
         .ok_or_else(|| anyhow::anyhow!("healthcheck address did not resolve"))?;
-    TcpStream::connect_timeout(&addr, Duration::from_secs(2))?;
-    Ok(())
+    // An HTTP request to /v1/health, not a bare connect: the port accepts
+    // whether or not any change event can flow, and the endpoint answers 503
+    // when a database producer is detached (issue #19, gate m189).
+    let mut stream = TcpStream::connect_timeout(&addr, Duration::from_secs(2))?;
+    stream.set_read_timeout(Some(Duration::from_secs(2)))?;
+    stream.write_all(b"GET /v1/health HTTP/1.0\r\nHost: localhost\r\n\r\n")?;
+    let mut head = [0u8; 12];
+    stream.read_exact(&mut head)?;
+    let line = String::from_utf8_lossy(&head);
+    if line.starts_with("HTTP/1.") && line.ends_with(" 200") {
+        Ok(())
+    } else {
+        anyhow::bail!("/v1/health answered {line:?}")
+    }
 }
 
 fn load_config() -> anyhow::Result<ServerConfig> {
@@ -136,6 +149,11 @@ fn apply_env_overrides(config: &mut ServerConfig) {
             secret,
             issuer: std::env::var("REALTIME_JWT_ISSUER").ok(),
             audience: std::env::var("REALTIME_JWT_AUDIENCE").ok(),
+            allow_no_issuer: std::env::var("REALTIME_JWT_ALLOW_NO_ISSUER")
+                .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true")),
+            previous_secret: std::env::var("REALTIME_JWT_SECRET_PREV")
+                .ok()
+                .filter(|s| !s.is_empty()),
         };
     }
 }

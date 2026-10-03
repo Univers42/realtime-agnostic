@@ -17,6 +17,7 @@
 //! auth provider, router, fan-out pool, database producers, and HTTP routes,
 //! then binds a TCP listener.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use axum::{
@@ -26,16 +27,16 @@ use axum::{
 use realtime_auth::NoAuthProvider;
 use realtime_bus_inprocess::InProcessBus;
 use realtime_bus_irc::{IrcBus, IrcBusConfig};
-use realtime_core::{AuthProvider, DatabaseProducer, EventBus, EventBusPublisher};
+use realtime_core::{AuthProvider, EventBus, EventBusPublisher};
 use realtime_engine::{
     registry::SubscriptionRegistry, router::EventRouter, sequence::SequenceGenerator,
-    ProducerRegistry,
+    PresenceTracker, ProducerRegistry,
 };
 use realtime_gateway::{
     connection::ConnectionManager,
     fanout::FanOutWorkerPool,
     rest_api,
-    ws_handler::{self, AppState},
+    ws_handler::{self, AppState, ProducerHandle},
 };
 use tokio::sync::mpsc;
 use tower_http::cors::CorsLayer;
@@ -60,12 +61,13 @@ pub async fn run(config: ServerConfig) -> anyhow::Result<()> {
     let dispatch_tx = build_fanout(&conn_manager, config.performance.fanout_workers);
     let router = wire_router(&registry, &sequence_gen, dispatch_tx);
     spawn_bus_loop(&bus, &router).await?;
-    start_producers(&config, &publisher);
+    let producers = start_producers(&config, &publisher);
     let app = build_http_router(
         conn_manager,
         registry,
         auth_provider,
         publisher,
+        producers,
         &config.static_dir,
     );
 
@@ -133,10 +135,14 @@ fn build_auth_provider(config: &ServerConfig) -> anyhow::Result<Arc<dyn AuthProv
             secret,
             issuer,
             audience,
+            allow_no_issuer,
+            previous_secret,
         } => {
             let mut jwt = realtime_auth::JwtConfig::hmac(secret.clone());
+            jwt.previous_secret.clone_from(previous_secret);
             jwt.issuer.clone_from(issuer);
             jwt.audience.clone_from(audience);
+            jwt.require_issuer = !allow_no_issuer;
             Ok(Arc::new(realtime_auth::JwtAuthProvider::new(&jwt)?))
         }
     }
@@ -186,20 +192,30 @@ async fn spawn_bus_loop(bus: &Arc<dyn EventBus>, router: &Arc<EventRouter>) -> a
     Ok(())
 }
 
-fn start_producers(config: &ServerConfig, publisher: &Arc<dyn EventBusPublisher>) {
+fn start_producers(
+    config: &ServerConfig,
+    publisher: &Arc<dyn EventBusPublisher>,
+) -> Arc<Vec<ProducerHandle>> {
     let registry = default_producer_registry();
     if let Ok(adapters) = registry.adapters() {
         info!("Available adapters: {:?}", adapters);
     }
+    let mut handles = Vec::new();
     for db_cfg in &config.databases {
         match registry.create_producer(&db_cfg.adapter, db_cfg.config.clone()) {
             Ok(producer) => {
-                let name = db_cfg.adapter.clone();
-                spawn_producer_task(producer, Arc::clone(publisher), name);
+                let handle = ProducerHandle {
+                    name: db_cfg.adapter.clone(),
+                    producer: Arc::from(producer),
+                    ended: Arc::new(AtomicBool::new(false)),
+                };
+                spawn_producer_task(handle.clone(), Arc::clone(publisher));
+                handles.push(handle);
             }
             Err(e) => error!(adapter = %db_cfg.adapter, "Failed to create producer: {}", e),
         }
     }
+    Arc::new(handles)
 }
 
 fn build_http_router(
@@ -207,6 +223,7 @@ fn build_http_router(
     registry: Arc<SubscriptionRegistry>,
     auth_provider: Arc<dyn AuthProvider>,
     bus_publisher: Arc<dyn EventBusPublisher>,
+    producers: Arc<Vec<ProducerHandle>>,
     static_dir: &str,
 ) -> Router {
     let state = AppState {
@@ -214,15 +231,94 @@ fn build_http_router(
         registry,
         auth_provider,
         bus_publisher,
+        presence: Arc::new(PresenceTracker::new()),
+        presence_shared: build_presence_shared(),
+        usage: build_usage(),
+        allowed_origins: realtime_gateway::origin::OriginPolicy::from_env().map(Arc::new),
+        producers,
     };
     Router::new()
         .route("/ws", get(ws_handler::ws_upgrade))
         .route("/v1/publish", post(rest_api::publish_event))
         .route("/v1/publish/batch", post(rest_api::publish_batch))
         .route("/v1/health", get(rest_api::health_check))
+        .route("/v1/presence", get(rest_api::presence_query))
+        .route("/metrics", get(rest_api::prometheus))
         .fallback_service(tower_http::services::ServeDir::new(static_dir))
         .layer(CorsLayer::permissive())
         .with_state(state)
+}
+
+/// Build the A5 cross-node presence backend IFF the `REALTIME_PRESENCE_SHARED`
+/// sub-flag is ON (default OFF = byte-parity). When ON, wires a Redis-backed
+/// shared store from `REALTIME_PRESENCE_REDIS_URL` (the `presence:*` namespace,
+/// overridable via `REALTIME_PRESENCE_PREFIX`) so a member tracked on one node
+/// is visible to a presence query served by another. When OFF returns `None`:
+/// no shared store, no Redis connection, `TRACK`/`UNTRACK` only touch the local
+/// in-process tracker and the presence query answers from the local set — the
+/// connect/track/query path is byte-identical to today's single node.
+fn build_presence_shared() -> Option<realtime_gateway::presence_shared::SharedPresence> {
+    if !env_flag_on("REALTIME_PRESENCE_SHARED") {
+        return None;
+    }
+    let redis_url = std::env::var("REALTIME_PRESENCE_REDIS_URL")
+        .ok()
+        .filter(|u| !u.trim().is_empty())
+        .or_else(|| std::env::var("REDIS_URL").ok())
+        .unwrap_or_default();
+    if redis_url.trim().is_empty() {
+        error!(
+            "REALTIME_PRESENCE_SHARED=1 but no REALTIME_PRESENCE_REDIS_URL/REDIS_URL — \
+             shared presence disabled (falling back to single-node, no cross-node merge)"
+        );
+        return None;
+    }
+    let mut shared = realtime_gateway::presence_shared::SharedPresence::new(&redis_url);
+    if let Ok(prefix) = std::env::var("REALTIME_PRESENCE_PREFIX") {
+        shared = shared.with_prefix(&prefix);
+    }
+    info!(
+        "realtime cross-node presence ON (REALTIME_PRESENCE_SHARED) — shared Redis store at {}",
+        redis_url
+    );
+    Some(shared)
+}
+
+/// Build the B1d metering handle (`realtime.connection.seconds`) IFF the
+/// `REALTIME_METERING` sub-flag is ON (default OFF = byte-parity). When ON, wires
+/// the durable `usage.events` Redis sink from `REALTIME_METERING_REDIS_URL` and
+/// spawns the background flusher every `REALTIME_METERING_FLUSH_MS` (default
+/// 60000). When OFF returns `None`: no handle, no flusher (not even an idle
+/// timer), no Redis connection — the connect/close path is unchanged.
+fn build_usage() -> Option<realtime_gateway::usage::Usage> {
+    if !env_flag_on("REALTIME_METERING") {
+        return None;
+    }
+    let redis_url = std::env::var("REALTIME_METERING_REDIS_URL").unwrap_or_default();
+    let flush_ms = std::env::var("REALTIME_METERING_FLUSH_MS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(60_000);
+    let usage = realtime_gateway::usage::Usage::new().with_stream_url(&redis_url);
+    usage.spawn_flusher(flush_ms);
+    info!(
+        "realtime metering ON (REALTIME_METERING) — flushing realtime.connection.seconds every {}ms to usage.events",
+        flush_ms
+    );
+    Some(usage)
+}
+
+/// A boolean env flag is ON for `1`/`true`/`yes`/`on` (case-insensitive); any
+/// other value, or absence, is OFF. Mirrors the data-plane / Go consumer
+/// convention so the same `1` turns the whole metering pipeline on.
+fn env_flag_on(key: &str) -> bool {
+    matches!(
+        std::env::var(key)
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str(),
+        "1" | "true" | "yes" | "on"
+    )
 }
 
 /// Build the default [`ProducerRegistry`] with built-in adapters.
@@ -234,21 +330,30 @@ pub fn default_producer_registry() -> ProducerRegistry {
     registry
 }
 
-fn spawn_producer_task(
-    producer: Box<dyn DatabaseProducer>,
-    bus_pub: Arc<dyn EventBusPublisher>,
-    adapter_name: String,
-) {
+fn spawn_producer_task(handle: ProducerHandle, bus_pub: Arc<dyn EventBusPublisher>) {
     tokio::spawn(async move {
-        match producer.start().await {
+        let adapter_name = &handle.name;
+        match handle.producer.start().await {
             Ok(mut stream) => {
                 while let Some(event) = stream.next_event().await {
                     if let Err(e) = bus_pub.publish(event.topic.as_str(), &event).await {
                         error!(adapter = %adapter_name, "Failed to publish event: {}", e);
                     }
                 }
+                // next_event() returning None means the producer's sender was
+                // dropped: this task is finished and no further change event
+                // will EVER be published for this database. It used to end
+                // here in total silence while the process kept serving
+                // WebSockets, so the only symptom was subscribers receiving
+                // nothing. Say so.
+                error!(
+                    adapter = %adapter_name,
+                    "producer stream ended — no further change events will be published for this database"
+                );
             }
             Err(e) => error!(adapter = %adapter_name, "Failed to start producer: {}", e),
         }
+        // Either way nothing more will flow: /v1/health reports it detached.
+        handle.ended.store(true, Ordering::SeqCst);
     });
 }

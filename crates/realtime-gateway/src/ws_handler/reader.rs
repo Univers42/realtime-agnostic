@@ -10,6 +10,8 @@
 /*                                                                            */
 /* ************************************************************************** */
 
+use std::sync::{Arc, Mutex};
+
 use axum::extract::ws::{Message, WebSocket};
 use chrono::Utc;
 use futures::stream::SplitStream;
@@ -23,6 +25,13 @@ use super::util::send_ctrl;
 use super::handlers;
 use super::AppState;
 
+/// Shared slot the reader stamps with the authenticated platform user/tenant
+/// (`AuthClaims::sub`) on a successful AUTH, so the close path in
+/// `handle_websocket` can attribute the connection-lifetime metric to the SAME
+/// identity the gateway stamps as `EventSource.id` on publishes. `None` until
+/// (or unless) the connection authenticates.
+pub(super) type TenantSlot = Arc<Mutex<Option<String>>>;
+
 #[derive(Default)]
 pub(super) struct AuthState {
     pub authenticated: bool,
@@ -35,32 +44,64 @@ pub(super) enum Action {
     Close,
 }
 
+/// How the read side ended.
+///
+/// This matters for exactly one thing: RFC 6455 §5.5.1 says an endpoint that
+/// receives a Close frame MUST send one back. This loop used to `return` on
+/// `Message::Close`, the socket was then dropped, and the peer never got an
+/// answer -- so a client that said goodbye politely saw close code **1006**
+/// (abnormal closure) instead of 1000. Measured from a browser against this
+/// gateway (2026-09-20): every one of six bench sockets closed 1006. An SDK
+/// cannot tell that from a dropped connection, so a normal disconnect looks
+/// like a network failure and drives reconnect-with-backoff and error logs.
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
+pub(super) enum Ending {
+    /// the peer sent a Close frame and is owed one back
+    ClientClose,
+    /// the stream ended, errored, or a handler asked to hang up
+    Gone,
+}
+
 pub(super) async fn reader_loop(
     mut ws_stream: SplitStream<WebSocket>,
     conn_id: ConnectionId,
     state: AppState,
     ctrl_tx: mpsc::Sender<String>,
-) {
+    tenant_slot: TenantSlot,
+) -> Ending {
     let mut auth = AuthState::default();
     while let Some(result) = ws_stream.next().await {
         match result {
             Ok(Message::Text(text)) => {
                 let action = dispatch_text(&text, conn_id, &state, &ctrl_tx, &mut auth).await;
+                // Publish the authenticated identity so the close path can meter
+                // the connection lifetime against the right tenant. Cheap; only
+                // taken when metering is ON (the slot is otherwise unread).
+                if auth.authenticated {
+                    if let Some(c) = auth.claims.as_ref() {
+                        if let Ok(mut slot) = tenant_slot.lock() {
+                            if slot.as_deref() != Some(c.sub.as_str()) {
+                                *slot = Some(c.sub.clone());
+                            }
+                        }
+                    }
+                }
                 if action == Action::Close {
-                    return;
+                    return Ending::Gone;
                 }
             }
             Ok(Message::Close(_)) => {
                 info!(conn_id = %conn_id, "Client initiated close");
-                return;
+                return Ending::ClientClose;
             }
             Err(e) => {
                 debug!(conn_id = %conn_id, "WebSocket read error: {}", e);
-                return;
+                return Ending::Gone;
             }
             _ => {}
         }
     }
+    Ending::Gone
 }
 
 async fn dispatch_text(
@@ -100,6 +141,17 @@ async fn dispatch_text(
             event_type,
             payload,
         } => handlers::handle_publish(topic, event_type, payload, conn_id, auth, state).await,
+        ClientMessage::Broadcast {
+            topic,
+            event,
+            payload,
+        } => handlers::handle_broadcast(topic, event, payload, conn_id, auth, state).await,
+        ClientMessage::Track { topic, meta } => {
+            handlers::handle_track(topic, meta, conn_id, auth, state).await
+        }
+        ClientMessage::Untrack { topic } => {
+            handlers::handle_untrack(topic, conn_id, auth, state).await
+        }
         ClientMessage::Ping => handle_ping(conn_id, ctrl_tx).await,
     }
 }

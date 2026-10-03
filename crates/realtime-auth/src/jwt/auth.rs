@@ -13,7 +13,7 @@
 //! [`AuthProvider`] trait implementation for JWT verification.
 
 use async_trait::async_trait;
-use jsonwebtoken::decode;
+use jsonwebtoken::{decode, errors::ErrorKind, TokenData};
 use realtime_core::{
     AuthClaims, AuthContext, AuthProvider, RealtimeError, Result, TopicPath, TopicPattern,
 };
@@ -25,18 +25,17 @@ use super::{JwtAuthProvider, JwtClaims};
 impl AuthProvider for JwtAuthProvider {
     async fn verify(&self, token: &str, _context: &AuthContext) -> Result<AuthClaims> {
         let token = token.strip_prefix("Bearer ").unwrap_or(token);
-        let token_data =
-            decode::<JwtClaims>(token, &self.decoding_key, &self.validation).map_err(|e| {
-                warn!("JWT verification failed: {}", e);
-                RealtimeError::AuthFailed(format!("Invalid token: {e}"))
-            })?;
+        let token_data = self.decode(token).map_err(|e| {
+            warn!("JWT verification failed: {}", e);
+            RealtimeError::AuthFailed(format!("Invalid token: {e}"))
+        })?;
         let claims = token_data.claims;
         debug!(sub = %claims.sub, "JWT verified successfully");
         Ok(build_auth_claims(claims))
     }
 
     async fn authorize_subscribe(&self, claims: &AuthClaims, topic: &TopicPattern) -> Result<()> {
-        if claims.can_subscribe_to(topic) {
+        if claims.can_subscribe_to_scoped(topic, &self.protected_namespaces) {
             Ok(())
         } else {
             Err(RealtimeError::AuthorizationDenied(format!(
@@ -46,12 +45,28 @@ impl AuthProvider for JwtAuthProvider {
     }
 
     async fn authorize_publish(&self, claims: &AuthClaims, topic: &TopicPath) -> Result<()> {
-        if claims.can_publish_to(topic) {
+        if claims.can_publish_to_scoped(topic, &self.protected_namespaces) {
             Ok(())
         } else {
             Err(RealtimeError::AuthorizationDenied(format!(
                 "Not authorized to publish to {topic}"
             )))
+        }
+    }
+}
+
+impl JwtAuthProvider {
+    /// Decodes `token` with the current key and, only when that key rejects the
+    /// signature, with the previous one. Any other error (expiry, issuer,
+    /// algorithm) is final: the previous key never widens those checks.
+    fn decode(&self, token: &str) -> jsonwebtoken::errors::Result<TokenData<JwtClaims>> {
+        match decode::<JwtClaims>(token, &self.decoding_key, &self.validation) {
+            Err(e) if *e.kind() == ErrorKind::InvalidSignature => {
+                self.previous_key.as_ref().map_or(Err(e), |prev| {
+                    decode::<JwtClaims>(token, prev, &self.validation)
+                })
+            }
+            other => other,
         }
     }
 }
@@ -64,15 +79,28 @@ impl AuthProvider for JwtAuthProvider {
 ///   * else — permissive (baseline keeps existing namespace-less tokens working
 ///     for one release, with a deprecation warning each time it's exercised).
 fn namespace_fallback_permissive() -> bool {
-    match std::env::var("REALTIME_NAMESPACE_FALLBACK").ok().as_deref() {
+    fallback_permissive(
+        std::env::var("REALTIME_NAMESPACE_FALLBACK").ok().as_deref(),
+        std::env::var("SECURITY_MODE").ok().as_deref(),
+    )
+}
+
+/// The fallback policy as a pure function of the two variables' values. Any value
+/// other than `permissive`/`deny` — unset, or the empty string compose passes for
+/// an unset `${REALTIME_NAMESPACE_FALLBACK:-}` — defers to the security mode.
+fn fallback_permissive(fallback: Option<&str>, mode: Option<&str>) -> bool {
+    match fallback {
         Some("permissive") => true,
         Some("deny") => false,
-        _ => std::env::var("SECURITY_MODE").ok().as_deref() != Some("max"),
+        _ => mode != Some("max"),
     }
 }
 
 fn build_auth_claims(claims: JwtClaims) -> AuthClaims {
     let mut namespaces = claims.namespaces;
+    // `&&` short-circuits identically to the previous nested `if`s; deny mode
+    // (or a non-empty namespace list) leaves `namespaces` untouched so
+    // can_subscribe_to/can_publish_to deny by default — the secure posture.
     if namespaces.is_empty() && namespace_fallback_permissive() {
         // DEPRECATED (Phase 5→6): a namespace-less token is being granted
         // all-access. Set SECURITY_MODE=max or REALTIME_NAMESPACE_FALLBACK=deny
@@ -84,13 +112,40 @@ fn build_auth_claims(claims: JwtClaims) -> AuthClaims {
         );
         namespaces = vec!["*".to_string()];
     }
-    // deny mode: if empty and not fallback permissive, namespaces stays empty →
-    // can_subscribe_to/can_publish_to deny by default (the secure posture).
     AuthClaims {
         sub: claims.sub,
         namespaces,
         can_publish: claims.can_publish,
         can_subscribe: claims.can_subscribe,
         metadata: claims.metadata,
+    }
+}
+
+#[cfg(test)]
+mod fallback_tests {
+    use super::fallback_permissive;
+
+    #[test]
+    fn explicit_value_wins_over_mode() {
+        assert!(fallback_permissive(Some("permissive"), Some("max")));
+        assert!(!fallback_permissive(Some("deny"), Some("baseline")));
+    }
+
+    #[test]
+    fn unset_or_empty_defers_to_mode() {
+        for fallback in [None, Some("")] {
+            assert!(
+                !fallback_permissive(fallback, Some("max")),
+                "max must deny ({fallback:?})"
+            );
+            assert!(
+                fallback_permissive(fallback, Some("baseline")),
+                "baseline stays permissive ({fallback:?})"
+            );
+            assert!(
+                fallback_permissive(fallback, None),
+                "no mode stays permissive ({fallback:?})"
+            );
+        }
     }
 }

@@ -2,6 +2,8 @@
 name = "realtime-db-postgres"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
+publish = false
 
 [dependencies]
 realtime-core = { path = "../realtime-core" }

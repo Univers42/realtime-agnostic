@@ -32,6 +32,7 @@ use realtime_bus_inprocess::InProcessBus;
 use realtime_core::{AuthProvider, EventBus, EventBusPublisher, EventEnvelope, TopicPath};
 use realtime_engine::{
     registry::SubscriptionRegistry, router::EventRouter, sequence::SequenceGenerator,
+    PresenceTracker,
 };
 use realtime_gateway::{
     connection::ConnectionManager,
@@ -46,6 +47,13 @@ use tower_http::cors::CorsLayer;
 
 /// Helper: spin up a full server and return the address + shared state.
 async fn start_test_server() -> (String, Arc<dyn EventBusPublisher>, Arc<dyn EventBus>) {
+    start_test_server_with(Arc::new(NoAuthProvider::new())).await
+}
+
+/// Start the test server with a given auth provider.
+async fn start_test_server_with(
+    auth_provider: Arc<dyn AuthProvider>,
+) -> (String, Arc<dyn EventBusPublisher>, Arc<dyn EventBus>) {
     let bus: Arc<dyn EventBus> = Arc::new(InProcessBus::new(16384));
 
     let publisher: Arc<dyn EventBusPublisher> = {
@@ -53,7 +61,6 @@ async fn start_test_server() -> (String, Arc<dyn EventBusPublisher>, Arc<dyn Eve
         Arc::from(p)
     };
 
-    let auth_provider: Arc<dyn AuthProvider> = Arc::new(NoAuthProvider::new());
     let registry = Arc::new(SubscriptionRegistry::new());
     let sequence_gen = Arc::new(SequenceGenerator::new());
     let conn_manager = Arc::new(ConnectionManager::new(1024));
@@ -79,6 +86,11 @@ async fn start_test_server() -> (String, Arc<dyn EventBusPublisher>, Arc<dyn Eve
         registry: Arc::clone(&registry),
         auth_provider,
         bus_publisher: Arc::clone(&publisher),
+        presence: Arc::new(PresenceTracker::new()),
+        presence_shared: None,
+        usage: None,
+        allowed_origins: None,
+        producers: Arc::new(Vec::new()),
     };
 
     let app = Router::new()
@@ -721,6 +733,58 @@ async fn test_jwt_auth_provider() {
     assert_eq!(auth_claims.sub, "user-123");
 }
 
+/// Regression for the rc.3 authz fix: a token scoped to one namespace must be
+/// DENIED publish to another namespace. `handle_publish`/`handle_broadcast`/
+/// `handle_track` all gate on `authorize_publish`, so this is the primitive that
+/// keeps a tenant from broadcasting / injecting presence into another tenant's
+/// topics. (Before the fix those handlers checked only authentication.)
+#[tokio::test]
+async fn test_jwt_authorize_publish_is_namespace_scoped() {
+    use jsonwebtoken::{encode, EncodingKey, Header};
+    use realtime_auth::{JwtAuthProvider, JwtConfig};
+    use realtime_core::{AuthContext, AuthProvider};
+
+    let secret = "test-secret-key-for-jwt-testing-2024";
+    let config = JwtConfig::hmac(secret);
+    let provider = JwtAuthProvider::new(&config).unwrap();
+
+    let claims = json!({
+        "sub": "user-a",
+        "exp": chrono::Utc::now().timestamp() + 3600,
+        "iat": chrono::Utc::now().timestamp(),
+        "can_publish": true,
+        "namespaces": ["tenant_a"]
+    });
+    let token = encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(secret.as_bytes()),
+    )
+    .unwrap();
+    let ctx = AuthContext {
+        peer_addr: "127.0.0.1:0".parse().unwrap(),
+        transport: "websocket".to_string(),
+    };
+    let auth_claims = provider.verify(&token, &ctx).await.unwrap();
+
+    // Allowed inside its own namespace …
+    assert!(
+        provider
+            .authorize_publish(&auth_claims, &TopicPath::new("tenant_a/orders"))
+            .await
+            .is_ok(),
+        "publish to own namespace must be allowed"
+    );
+    // … denied to another tenant's namespace (the isolation guarantee).
+    assert!(
+        provider
+            .authorize_publish(&auth_claims, &TopicPath::new("tenant_b/orders"))
+            .await
+            .is_err(),
+        "publish to another namespace must be DENIED"
+    );
+}
+
 #[tokio::test]
 async fn test_jwt_auth_rejects_invalid_token() {
     use realtime_auth::{JwtAuthProvider, JwtConfig};
@@ -1171,4 +1235,182 @@ async fn test_realtime_client_sdk_e2e() {
 
     assert_eq!(received.topic.as_str(), "sdk/topic");
     assert_eq!(received.event_type, "sdk_event");
+}
+
+// ═══════════════════════════════════════════════════════════
+// A5 — broadcast (client→client) + presence (who's online)
+// ═══════════════════════════════════════════════════════════
+
+/// Read the next `EVENT` frame (parsed) off a split WS read half, or `None`
+/// on timeout. Optionally require a specific inner `event_type`.
+async fn next_event(
+    read: &mut futures::stream::SplitStream<
+        tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+    >,
+    want_event_type: Option<&str>,
+    timeout: Duration,
+) -> Option<serde_json::Value> {
+    tokio::time::timeout(timeout, async {
+        while let Some(Ok(Message::Text(text))) = read.next().await {
+            let p: serde_json::Value = serde_json::from_str(&text).unwrap();
+            if p.get("type").and_then(|t| t.as_str()) == Some("EVENT") {
+                let et = p["event"]["event_type"].as_str();
+                if want_event_type.is_none() || et == want_event_type {
+                    return Some(p);
+                }
+            }
+        }
+        None
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
+#[tokio::test]
+async fn test_broadcast_client_to_client() {
+    // Two clients subscribe to a topic; one BROADCASTs; the other receives it
+    // as a normal EVENT with event_type "broadcast". No DB involved — the
+    // message flows over the EventBus, which makes it multi-node-capable.
+    let (addr, _pub, _bus) = start_test_server().await;
+
+    let ws1 = connect_and_auth(&addr).await;
+    let ws2 = connect_and_auth(&addr).await;
+    let (mut write1, mut read1) = ws1.split();
+    let (mut write2, mut read2) = ws2.split();
+
+    ws_subscribe(&mut write1, "b-sub-1", "room/lobby").await;
+    ws_subscribe(&mut write2, "b-sub-2", "room/lobby").await;
+
+    // Client 1 broadcasts a cursor move.
+    let bcast = json!({
+        "type": "BROADCAST",
+        "topic": "room/lobby",
+        "event": "cursor_move",
+        "payload": { "x": 12, "y": 34 }
+    });
+    write1.send(Message::Text(bcast.to_string())).await.unwrap();
+
+    // Client 2 must receive it as an EVENT with event_type "broadcast".
+    let got = next_event(&mut read2, Some("broadcast"), Duration::from_secs(3)).await;
+    let ev = got.expect("client 2 should receive the broadcast");
+    assert_eq!(ev["event"]["topic"], "room/lobby");
+    assert_eq!(ev["event"]["event_type"], "broadcast");
+    assert_eq!(ev["event"]["payload"]["event"], "cursor_move");
+    assert_eq!(ev["event"]["payload"]["payload"]["x"], 12);
+
+    // The broadcaster itself is also a subscriber, so it sees its own message
+    // (Supabase `self: true` semantics). Drain to prove no panic.
+    let _self_echo = next_event(&mut read1, Some("broadcast"), Duration::from_secs(1)).await;
+}
+
+#[tokio::test]
+async fn test_presence_join_then_leave() {
+    // A subscribes to a topic and TRACKs presence; B subscribes and observes
+    // A in a presence snapshot; A disconnects → B observes A leave.
+    let (addr, _pub, _bus) = start_test_server().await;
+
+    let ws_a = connect_and_auth(&addr).await;
+    let (mut write_a, mut read_a) = ws_a.split();
+    let ws_b = connect_and_auth(&addr).await;
+    let (mut write_b, mut read_b) = ws_b.split();
+
+    // Both watch the same topic for presence EVENTs.
+    ws_subscribe(&mut write_a, "p-sub-a", "doc/42").await;
+    ws_subscribe(&mut write_b, "p-sub-b", "doc/42").await;
+
+    // A joins presence.
+    let track_a = json!({
+        "type": "TRACK",
+        "topic": "doc/42",
+        "meta": { "name": "alice", "color": "blue" }
+    });
+    write_a
+        .send(Message::Text(track_a.to_string()))
+        .await
+        .unwrap();
+
+    // B should receive a presence snapshot listing at least one member.
+    let join = next_event(&mut read_b, Some("presence"), Duration::from_secs(3)).await;
+    let join = join.expect("B should see A join presence");
+    let members = join["event"]["payload"]["members"].as_array().unwrap();
+    assert_eq!(members.len(), 1, "exactly A is present");
+    assert_eq!(members[0]["meta"]["name"], "alice");
+
+    // Drain A's own join echo so its read half is clear.
+    let _ = next_event(&mut read_a, Some("presence"), Duration::from_secs(1)).await;
+
+    // A disconnects → its connection cleanup emits a LEAVE snapshot.
+    drop(write_a);
+    drop(read_a);
+
+    let leave = next_event(&mut read_b, Some("presence"), Duration::from_secs(3)).await;
+    let leave = leave.expect("B should see A leave presence");
+    let members_after = leave["event"]["payload"]["members"].as_array().unwrap();
+    assert_eq!(members_after.len(), 0, "no members remain after A leaves");
+}
+
+#[tokio::test]
+async fn test_untrack_emits_leave() {
+    // Explicit UNTRACK (not just disconnect) emits a presence LEAVE.
+    let (addr, _pub, _bus) = start_test_server().await;
+
+    let ws = connect_and_auth(&addr).await;
+    let (mut write, mut read) = ws.split();
+    ws_subscribe(&mut write, "u-sub", "team/eng").await;
+
+    write
+        .send(Message::Text(
+            json!({ "type": "TRACK", "topic": "team/eng", "meta": { "name": "bob" } }).to_string(),
+        ))
+        .await
+        .unwrap();
+    let join = next_event(&mut read, Some("presence"), Duration::from_secs(3)).await;
+    assert_eq!(
+        join.expect("join")["event"]["payload"]["members"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+
+    write
+        .send(Message::Text(
+            json!({ "type": "UNTRACK", "topic": "team/eng" }).to_string(),
+        ))
+        .await
+        .unwrap();
+    let leave = next_event(&mut read, Some("presence"), Duration::from_secs(3)).await;
+    assert_eq!(
+        leave.expect("leave")["event"]["payload"]["members"]
+            .as_array()
+            .unwrap()
+            .len(),
+        0
+    );
+}
+
+/// A refused AUTH reaches the client as `AUTH_FAILED` before the close. The writer
+/// used to race the queued error frame against the goodbye and sometimes sent
+/// only the close, so a client could not tell an auth refusal from a drop.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn test_auth_failed_frame_precedes_close() {
+    use realtime_auth::{JwtAuthProvider, JwtConfig};
+
+    let provider = JwtAuthProvider::new(&JwtConfig::hmac("race-secret-at-least-32-characters!!"));
+    let (addr, _publisher, _bus) = start_test_server_with(Arc::new(provider.unwrap())).await;
+    for attempt in 0..200 {
+        let (mut ws, _) = connect_async(format!("ws://{addr}/ws")).await.unwrap();
+        let auth = json!({ "type": "AUTH", "token": "not.a.token" }).to_string();
+        ws.send(Message::Text(auth)).await.unwrap();
+        let first = tokio::time::timeout(Duration::from_secs(5), ws.next()).await;
+        match first.expect("no reply within 5s") {
+            Some(Ok(Message::Text(t))) => {
+                assert!(t.contains("AUTH_FAILED"), "attempt {attempt}: {t}");
+            }
+            other => panic!("attempt {attempt}: closed before AUTH_FAILED: {other:?}"),
+        }
+    }
 }
