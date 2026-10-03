@@ -151,10 +151,8 @@ jobs:
 
       - name: Audit dependencies for vulnerabilities
         run: cargo audit
-        continue-on-error: true   # advisory DB may lag; treat as warning in CI
 
       - name: Check for unused dependencies
         run: |
-          cargo install cargo-machete --locked 2>/dev/null || true
-          cargo machete 2>/dev/null || true
-        continue-on-error: true
+          cargo install cargo-machete@0.9.2 --locked
+          cargo machete

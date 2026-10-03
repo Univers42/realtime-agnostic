@@ -206,13 +206,12 @@ jobs:
         run: |
           VERSION=${{ needs.build.outputs.version }}
           echo "Pulling ${{ env.DOCKERHUB_IMAGE }}:${VERSION} ..."
-          docker pull ${{ env.DOCKERHUB_IMAGE }}:latest
+          docker pull ${{ env.DOCKERHUB_IMAGE }}:${VERSION}
 
           echo "Starting container ..."
           docker run -d --name probe \
             -p 4000:4000 \
-            -e REALTIME_AUTH=noauth \
-            ${{ env.DOCKERHUB_IMAGE }}:latest
+            ${{ env.DOCKERHUB_IMAGE }}:${VERSION}
 
           echo "Waiting for server to boot ..."
           for i in $(seq 1 15); do

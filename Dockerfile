@@ -9,13 +9,14 @@
 # NOTE: every workspace member's Cargo.toml must be COPY'd below — add new
 # crates here or the stub build cannot resolve the workspace graph.
 # ─────────────────────────────────────────────────────────────────────────────
-FROM public.ecr.aws/docker/library/rust:1.89-slim-bookworm AS deps
+FROM public.ecr.aws/docker/library/rust:1.96-slim-bookworm@sha256:e18a79fc84dfcfc3ab5ba72290398a644c135c97eaa881447fddc354ee4701a3 AS deps
 WORKDIR /build
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 RUN --mount=type=cache,id=apt-cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,id=apt-lists,target=/var/lib/apt/lists,sharing=locked \
     apt-get update && \
-    apt-get install -y pkg-config libssl-dev
+    apt-get install -y --no-install-recommends pkg-config libssl-dev
 
 # Copy manifests only — this layer is cached as long as deps don't change.
 COPY Cargo.toml Cargo.lock ./
@@ -52,7 +53,10 @@ RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry,sharin
     done && \
     mkdir -p crates/realtime-server/src && \
     echo "fn main() {}" > crates/realtime-server/src/main.rs && \
-    cargo build --release --bin realtime-server 2>&1 | tail -5
+    mkdir -p crates/realtime-engine/benches && \
+    echo "fn main() {}" > crates/realtime-engine/benches/engine_bench.rs && \
+    cargo build --release --bin realtime-server 2>&1 | tail -5 && \
+    find /build/target -path '*/.fingerprint/*' -type f -exec touch -t 200001010000 {} +
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 2 – Application build (only re-runs when source code changes)
@@ -63,12 +67,12 @@ FROM deps AS builder
 COPY crates/ crates/
 COPY tests/  tests/
 
-# Touch sources so Cargo rebuilds the real crates over the stub fingerprints;
-# the binary is copied OUT of the cache mount so it lands in the layer.
+# Stub fingerprints were retro-dated in the deps stage, so real sources (any
+# mtime) read as newer → cargo rebuilds exactly the crates whose files changed.
+# The binary is copied OUT of the cache mount so it lands in the layer.
 RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=cargo-git,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,id=realtime-target,target=/build/target,sharing=locked \
-    find crates tests -name '*.rs' -exec touch {} + && \
     cargo build --release --bin realtime-server && \
     cp /build/target/release/realtime-server /realtime-server
 
