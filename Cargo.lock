@@ -2147,7 +2147,7 @@ dependencies = [
 
 [[package]]
 name = "realtime-auth"
-version = "0.2.0"
+version = "0.2.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2161,7 +2161,7 @@ dependencies = [
 
 [[package]]
 name = "realtime-bus-inprocess"
-version = "0.2.0"
+version = "0.2.2"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2172,7 +2172,7 @@ dependencies = [
 
 [[package]]
 name = "realtime-bus-irc"
-version = "0.2.0"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2186,7 +2186,7 @@ dependencies = [
 
 [[package]]
 name = "realtime-client"
-version = "0.2.0"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "futures",
@@ -2200,7 +2200,7 @@ dependencies = [
 
 [[package]]
 name = "realtime-core"
-version = "0.2.0"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2215,7 +2215,7 @@ dependencies = [
 
 [[package]]
 name = "realtime-db-mongodb"
-version = "0.2.0"
+version = "0.2.2"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2230,7 +2230,7 @@ dependencies = [
 
 [[package]]
 name = "realtime-db-postgres"
-version = "0.2.0"
+version = "0.2.2"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2245,7 +2245,7 @@ dependencies = [
 
 [[package]]
 name = "realtime-engine"
-version = "0.2.0"
+version = "0.2.2"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2262,7 +2262,7 @@ dependencies = [
 
 [[package]]
 name = "realtime-gateway"
-version = "0.2.0"
+version = "0.2.2"
 dependencies = [
  "axum",
  "bytes",
@@ -2283,7 +2283,7 @@ dependencies = [
 
 [[package]]
 name = "realtime-integration-tests"
-version = "0.2.0"
+version = "0.2.2"
 dependencies = [
  "axum",
  "bytes",
@@ -2306,7 +2306,7 @@ dependencies = [
 
 [[package]]
 name = "realtime-server"
-version = "0.2.0"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "async-trait",
